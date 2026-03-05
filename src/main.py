@@ -1,15 +1,24 @@
+import warnings
+warnings.filterwarnings("ignore", category=RuntimeWarning)
+
 import os
 import sys
+import warnings
 from datetime import timedelta
 
+# Gereksiz kütüphane uyarılarını gizler
+warnings.filterwarnings("ignore", category=RuntimeWarning)
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from utils.read_sp3 import read_sp3
-from utils.read_nav import read_nav
 from utils.ecef_to_geodetic import ecef_to_geodetic
 from utils.interpolation import lagrange_interpolate
+from utils.topocentric import ecef_to_topocentric
+
 from visualizer.plot_ground_tracks import plot_ground_tracks
 from visualizer.animate_ground_tracks import animate_ground_tracks
+from visualizer.interactive_map import select_station_on_map
+from visualizer.skyplot import plot_skyplot
 
 def get_multi_satellite_positions(selected_sats, sp3_data):
     sat_positions = {}
@@ -20,23 +29,17 @@ def get_multi_satellite_positions(selected_sats, sp3_data):
     return sat_positions
 
 def densify_satellite_data(sat_positions, interval_minutes=1):
-    """Aralıklı SP3 verilerini Lagrange interpolasyonu ile istenilen dakikaya sıklaştırır."""
     dense_positions = {}
     for sat_id, coords in sat_positions.items():
-        print(f"🔄 {sat_id} uydusu için Lagrange interpolasyonu hesaplanıyor (1 dakikalık aralıklarla)...")
         if len(coords) < 10:
             dense_positions[sat_id] = coords
             continue
         
         times = [c["time"] for c in coords]
-        xs = [c["x"] for c in coords]
-        ys = [c["y"] for c in coords]
-        zs = [c["z"] for c in coords]
+        xs, ys, zs = [c["x"] for c in coords], [c["y"] for c in coords], [c["z"] for c in coords]
         
-        start_time = times[0]
+        current_time = times[0]
         end_time = times[-1]
-        
-        current_time = start_time
         dense_coords = []
         
         while current_time <= end_time:
@@ -45,54 +48,63 @@ def densify_satellite_data(sat_positions, interval_minutes=1):
             interp_z = lagrange_interpolate(current_time, times, zs, order=9)
             
             dense_coords.append({
-                "id": sat_id,
-                "x": interp_x,
-                "y": interp_y,
-                "z": interp_z,
-                "time": current_time
+                "id": sat_id, "x": interp_x, "y": interp_y, "z": interp_z, "time": current_time
             })
             current_time += timedelta(minutes=interval_minutes)
             
         dense_positions[sat_id] = dense_coords
-        print(f"✅ {sat_id}: {len(coords)} nokta -> {len(dense_coords)} noktaya çıkarıldı.")
         
     return dense_positions
 
 def main():
-    print("🚀 Satellite Ground Track Visualizer başlatılıyor...")
+    print("🚀 Satellite Ground Track & Sky Plot Visualizer")
 
     sp3_path = os.path.join("data", "COD0MGXFIN_20240600000_01D_05M_ORB.SP3")
-    nav_path = os.path.join("data", "BRDC00IGS_R_20240600000_01D_MN.rnx")
-
-    print("📂 SP3 ve NAV dosyaları okunuyor...")
     sp3_data = read_sp3(sp3_path)
-    # nav_data = read_nav(nav_path) # İleride parser yazana kadar şimdilik atlıyoruz
-
     satellites = sorted(set([sat["id"] for sat in sp3_data]))
-    print(f"\n🌍 {len(satellites)} farklı uydu bulundu.")
 
-    selected = input("\n🛰️ Lütfen uyduların ID’lerini virgülle ayırarak girin (örnek: G01,G05): ")
+    # Test etmek için tüm uyduları görmek istiyorsanız doğrudan çok sayıda ID girebilirsiniz (ör: G01,G05,G10,E02,E05)
+    selected = input(f"🛰️ Lütfen virgülle uydu ID’si girin (G01,G05 vb.): ")
     selected_sats = [s.strip().upper() for s in selected.split(",") if s.strip().upper() in satellites]
 
     if not selected_sats:
-        print("⚠️ Geçerli bir uydu ID’si girilmedi. Varsayılan olarak G01 seçildi.")
-        selected_sats = ["G01"]
+        selected_sats = ["G01", "G05", "G10"]
 
-    # 1. Ham veriyi al
     multi_data = get_multi_satellite_positions(selected_sats, sp3_data)
-
-    # 2. Veriyi İnterpolasyon ile Sıklaştır (Gerçek Jeodezik Adım)
     dense_multi_data = densify_satellite_data(multi_data, interval_minutes=1)
 
-    # 3. Yoğunlaştırılmış veriyi ECEF'ten Geodetic'e çevir
-    print("\n🌍 ECEF -> Geodetic dönüşümü yapılıyor...")
+    # --- YENİ EKLENEN SKY PLOT VE İSTASYON BÖLÜMÜ ---
+    lat_sta, lon_sta = select_station_on_map()
+    h_sta = 100.0 # İstasyon yüksekliği (100m varsayılan)
+
+    visible_sats = []
+    t_zero = None
+
+    print("🔭 İstasyona göre Toposentrik (Azimut, Elevasyon) hesaplanıyor...")
+    for sat_id, coords in dense_multi_data.items():
+        if len(coords) > 0:
+            first_epoch = coords[0] # Uydunun o anki (ilk) konumu
+            if t_zero is None:
+                t_zero = first_epoch["time"]
+            
+            az, el, dist = ecef_to_topocentric(
+                first_epoch["x"], first_epoch["y"], first_epoch["z"], 
+                lat_sta, lon_sta, h_sta
+            )
+            visible_sats.append({"id": sat_id, "az": az, "el": el})
+
+    time_str = t_zero.strftime("%Y-%m-%d %H:%M:%S") if t_zero else "Bilinmiyor"
+    
+    # 1. Önce Sky Plot Gösterilir
+    plot_skyplot(visible_sats, lat_sta, lon_sta, time_str)
+
+    # 2. Sonra WGS84 Dönüşümü ve Harita Çizimleri Devam Eder
+    print("🌍 ECEF -> Geodetic dönüşümü yapılıyor...")
     for sat_id, coords in dense_multi_data.items():
         for entry in coords:
             lat, lon, h = ecef_to_geodetic(entry["x"], entry["y"], entry["z"])
-            entry["lat"] = lat
-            entry["lon"] = lon
+            entry["lat"], entry["lon"] = lat, lon
 
-    # 4. Çizdir
     animate_ground_tracks(dense_multi_data)
     plot_ground_tracks(dense_multi_data)
 
