@@ -15,6 +15,7 @@ from utils.ecef_to_geodetic import ecef_to_geodetic
 from utils.interpolation import lagrange_interpolate
 from utils.topocentric import ecef_to_topocentric
 from utils.read_nav import read_nav_kepler
+from utils.velocity import calculate_orbital_velocity
 
 from visualizer.plot_ground_tracks import plot_ground_tracks
 from visualizer.animate_ground_tracks import animate_ground_tracks
@@ -99,18 +100,29 @@ def main():
     visible_sats = []
     t_zero = None
 
-    print("🔭 İstasyona göre Toposentrik (Azimut, Elevasyon) hesaplanıyor...")
+    print("🔭 İstasyona göre Toposentrik koordinatlar ve Yörünge Hızı hesaplanıyor...")
     for sat_id, coords in dense_multi_data.items():
         if len(coords) > 0:
-            first_epoch = coords[0] # Uydunun o anki (ilk) konumu
+            first_epoch = coords[0] 
             if t_zero is None:
                 t_zero = first_epoch["time"]
             
+            # 1. Toposentrik Dönüşüm (Azimut, Elevasyon)
             az, el, dist = ecef_to_topocentric(
                 first_epoch["x"], first_epoch["y"], first_epoch["z"], 
                 lat_sta, lon_sta, h_sta
             )
-            visible_sats.append({"id": sat_id, "az": az, "el": el})
+            
+            # 2. Vis-Viva Denklemi ile Hız Hesaplaması (YENİ EKLENEN KISIM)
+            vel_kms = 0.0
+            if sat_id in kepler_veri:
+                a_meters = kepler_veri[sat_id]["A (Yarı Büyük Eksen) [m]"]
+                vel_kms = calculate_orbital_velocity(first_epoch["x"], first_epoch["y"], first_epoch["z"], a_meters)
+            
+            # Tüm veriyi paketleyip grafik arayüzüne (Frontend) gönderiyoruz
+            visible_sats.append({
+                "id": sat_id, "az": az, "el": el, "vel": vel_kms
+            })
 
     time_str = t_zero.strftime("%Y-%m-%d %H:%M:%S") if t_zero else "Bilinmiyor"
     
