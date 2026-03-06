@@ -14,6 +14,7 @@ from utils.read_sp3 import read_sp3
 from utils.ecef_to_geodetic import ecef_to_geodetic
 from utils.interpolation import lagrange_interpolate
 from utils.topocentric import ecef_to_topocentric
+from utils.read_nav import read_nav_kepler
 
 from visualizer.plot_ground_tracks import plot_ground_tracks
 from visualizer.animate_ground_tracks import animate_ground_tracks
@@ -61,11 +62,29 @@ def main():
 
     sp3_path = os.path.join("data", "COD0MGXFIN_20240600000_01D_05M_ORB.SP3")
     sp3_data = read_sp3(sp3_path)
+    # YENİ: NAV (Broadcast) verilerinden Kepler Parametrelerini okuma
+    nav_path = os.path.join("data", "BRDC00IGS_R_20240600000_01D_MN.rnx")
+    kepler_veri = read_nav_kepler(nav_path)
     satellites = sorted(set([sat["id"] for sat in sp3_data]))
 
     # Test etmek için tüm uyduları görmek istiyorsanız doğrudan çok sayıda ID girebilirsiniz (ör: G01,G05,G10,E02,E05)
     selected = input(f"🛰️ Lütfen virgülle uydu ID’si girin (G01,G05 vb.): ")
     selected_sats = [s.strip().upper() for s in selected.split(",") if s.strip().upper() in satellites]
+    print("\n" + "="*70)
+    print("🛰️ SEÇİLEN UYDULARIN KEPLER (YÖRÜNGE) PARAMETRELERİ (BRDC)")
+    print("="*70)
+    for sat in selected_sats:
+        if sat in kepler_veri:
+            k = kepler_veri[sat]
+            print(f"Uydu: {sat}")
+            print(f"  ➜ Dışmerkezlik (e)       : {k['e (Dışmerkezlik)']:.6f} (Tam daireye ne kadar yakın?)")
+            print(f"  ➜ Yörünge Eğikliği (i0)  : {k['i0 (Yörünge Eğikliği)']:.6f} radyan")
+            print(f"  ➜ Yarı Büyük Eksen (A)   : {k['A (Yarı Büyük Eksen) [m]']:,.2f} metre")
+            print(f"  ➜ Yerberi Argümanı (w)   : {k['omega (Yerberi Argümanı)']:.6f} radyan")
+            print("-" * 40)
+        else:
+            print(f"⚠️ {sat} uydusuna ait Kepler parametresi NAV dosyasında bulunamadı.")
+    print("="*70 + "\n")
 
     if not selected_sats:
         selected_sats = ["G01", "G05", "G10"]
