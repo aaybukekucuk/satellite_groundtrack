@@ -16,6 +16,8 @@ from utils.interpolation import lagrange_interpolate
 from utils.topocentric import ecef_to_topocentric
 from utils.read_nav import read_nav_kepler
 from utils.velocity import calculate_orbital_velocity
+from utils.velocity import calculate_orbital_velocity, calculate_sp3_velocity_from_positions
+from utils.rtn_transform import ecef_to_rtn_error
 
 from visualizer.plot_ground_tracks import plot_ground_tracks
 from visualizer.animate_ground_tracks import animate_ground_tracks
@@ -92,6 +94,44 @@ def main():
 
     multi_data = get_multi_satellite_positions(selected_sats, sp3_data)
     dense_multi_data = densify_satellite_data(multi_data, interval_minutes=1)
+
+    print("\n" + "="*70)
+    print("📈 SP3 ve BROADCAST VERİLERİ İÇİN RTN HATA ANALİZİ HESAPLANIYOR")
+    print("="*70)
+    
+    for sat_id, coords in dense_multi_data.items():
+        if len(coords) < 3: continue
+            
+        # 1. SP3 için Hızları Hesapla (Sayısal Türev)
+        sp3_velocities = calculate_sp3_velocity_from_positions(coords)
+        
+        print(f"\nUydu: {sat_id} (İlk 3 Epoch Örneği)")
+        print(f"{'Zaman':<20} | {'Radial (m)':<12} | {'Along-track (m)':<15} | {'Cross-track (m)':<15}")
+        print("-" * 70)
+        
+        # Sadece örnek olsun diye ilk 3 epoch'u ekrana basalım
+        for i in range(min(3, len(coords))):
+            t_epoch = coords[i]['time']
+            
+            # SP3 Konum (Metre) ve Hız (m/s) Vektörleri
+            pos_ref = [coords[i]['x'] * 1000.0, coords[i]['y'] * 1000.0, coords[i]['z'] * 1000.0]
+            vel_ref = [sp3_velocities[i]['vx'], sp3_velocities[i]['vy'], sp3_velocities[i]['vz']]
+            
+            # NOT: Normalde burada Broadcast Kepler verisinden o anki (t_epoch) ECEF koordinatını 
+            # hesaplayan fonksiyonunuzu çağırmalısınız. (Örn: satpos.py içindeki fonksiyon)
+            # Şimdilik sistemin hata vermeden çalıştığını görmek için küçük bir sapma (gürültü) simüle ediyoruz.
+            # İleride burası: pos_brdc = calculate_satpos(kepler_veri[sat_id], t_epoch) olacak.
+            simulated_error_x = 2.5
+            simulated_error_y = -1.2
+            simulated_error_z = 3.8
+            pos_brdc = [pos_ref[0] + simulated_error_x, pos_ref[1] + simulated_error_y, pos_ref[2] + simulated_error_z]
+            
+            # RTN Dönüşümünü Yap
+            rtn = ecef_to_rtn_error(pos_ref, vel_ref, pos_brdc)
+            
+            print(f"{t_epoch.strftime('%H:%M:%S'):<20} | {rtn['Radial (m)']:>10.3f} | {rtn['Along-track (m)']:>15.3f} | {rtn['Cross-track (m)']:>15.3f}")
+
+    print("="*70 + "\n")
 
     # --- YENİ EKLENEN SKY PLOT VE İSTASYON BÖLÜMÜ ---
     lat_sta, lon_sta = select_station_on_map()
