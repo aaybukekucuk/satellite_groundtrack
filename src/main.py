@@ -18,6 +18,7 @@ from utils.read_nav import read_nav_kepler
 from utils.velocity import calculate_orbital_velocity
 from utils.velocity import calculate_orbital_velocity, calculate_sp3_velocity_from_positions
 from utils.rtn_transform import ecef_to_rtn_error
+from utils.satpos_utils import calculate_satpos_from_kepler
 
 from visualizer.plot_ground_tracks import plot_ground_tracks
 from visualizer.animate_ground_tracks import animate_ground_tracks
@@ -95,9 +96,49 @@ def main():
     multi_data = get_multi_satellite_positions(selected_sats, sp3_data)
     dense_multi_data = densify_satellite_data(multi_data, interval_minutes=1)
 
+# --- YENİ EKLENEN RTN HATA ANALİZİ BÖLÜMÜ ---
     print("\n" + "="*70)
     print("📈 SP3 ve BROADCAST VERİLERİ İÇİN RTN HATA ANALİZİ HESAPLANIYOR")
     print("="*70)
+    
+    for sat_id, coords in dense_multi_data.items():
+        if len(coords) < 3: continue
+            
+        # 1. SP3 için Hızları Hesapla (Sayısal Türev)
+        sp3_velocities = calculate_sp3_velocity_from_positions(coords)
+        
+        # Referans Zamanı (t_zero) al (dt_seconds hesaplamak için)
+        t_zero = coords[0]['time']
+        
+        print(f"\nUydu: {sat_id} (İlk 5 Epoch Örneği)")
+        print(f"{'Zaman':<20} | {'Radial (m)':<12} | {'Along-track (m)':<15} | {'Cross-track (m)':<15}")
+        print("-" * 70)
+        
+        # İlk 5 epoch'u ekrana basalım
+        for i in range(min(5, len(coords))):
+            t_epoch = coords[i]['time']
+            dt_seconds = (t_epoch - t_zero).total_seconds()
+            
+            # SP3 Konum (Metre) ve Hız (m/s) Vektörleri
+            pos_ref = [coords[i]['x'] * 1000.0, coords[i]['y'] * 1000.0, coords[i]['z'] * 1000.0]
+            vel_ref = [sp3_velocities[i]['vx'], sp3_velocities[i]['vy'], sp3_velocities[i]['vz']]
+            
+            # BROADCAST ECEF KOORDİNATLARINI HESAPLA (YENİ FONKSİYON İLE)
+            pos_brdc = [0.0, 0.0, 0.0]
+            if sat_id in kepler_veri:
+                pos_brdc = calculate_satpos_from_kepler(kepler_veri[sat_id], dt_seconds)
+            
+            # Eğer Broadcast verisi yoksa veya [0,0,0] döndüyse atla
+            if pos_brdc == [0.0, 0.0, 0.0]:
+                print(f"{t_epoch.strftime('%H:%M:%S'):<20} | HATA: Bu uydu için NAV verisi bulunamadı.")
+                continue
+                
+            # RTN Dönüşümünü Yap
+            rtn = ecef_to_rtn_error(pos_ref, vel_ref, pos_brdc)
+            
+            print(f"{t_epoch.strftime('%H:%M:%S'):<20} | {rtn['Radial (m)']:>10.3f} | {rtn['Along-track (m)']:>15.3f} | {rtn['Cross-track (m)']:>15.3f}")
+
+    print("="*70 + "\n")
     
     for sat_id, coords in dense_multi_data.items():
         if len(coords) < 3: continue

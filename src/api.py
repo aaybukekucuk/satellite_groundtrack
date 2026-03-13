@@ -5,23 +5,22 @@ from fastapi.middleware.cors import CORSMiddleware
 import os
 import sys
 import math
+from datetime import datetime
 
-# Dosya yollarını dinamik ve kusursuz yapmak için (Pathing)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 STATIC_DIR = os.path.join(BASE_DIR, "static")
-
-# utils klasörüne erişim sağlamak için (ÖNCE YOLU TANITIYORUZ)
 sys.path.append(BASE_DIR)
 
-# ŞİMDİ UTILS İÇİNDEKİLERİ İMPORT EDEBİLİRİZ:
 from utils.read_sp3 import read_sp3
 from utils.read_nav import read_nav_kepler
 from utils.ecef_to_geodetic import ecef_to_geodetic
 from utils.topocentric import ecef_to_topocentric
 from utils.state_to_kepler import calculate_kepler_from_state
-from utils.compare_kepler import analyze_kepler_errors # <--- DOĞRU YERİ BURASI
+from utils.velocity import calculate_sp3_velocity_from_positions
+from utils.rtn_transform import ecef_to_rtn_error
+from utils.satpos_utils import calculate_satpos_from_kepler
 
-app = FastAPI(title="OrbitalViz API | Multi-GNSS Ground Track Visualization")
+app = FastAPI(title="OrbitalViz API")
 
 app.add_middleware(
     CORSMiddleware,
@@ -33,17 +32,12 @@ app.add_middleware(
 
 if not os.path.exists(STATIC_DIR):
     os.makedirs(STATIC_DIR)
-    print(f"⚠️ Uyarı: '{STATIC_DIR}' klasörü yoktu, otomatik oluşturuldu.")
 
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 SP3_DATA = []
 KEPLER_DATA = {}
-STATION = {
-    "lat": 39.866,
-    "lon": 32.736,
-    "h": 100.0  
-}
+STATION = {"lat": 39.866, "lon": 32.736, "h": 100.0}
 
 @app.on_event("startup")
 def load_data():
@@ -62,10 +56,7 @@ def load_data():
 
 @app.get("/")
 def serve_home():
-    index_path = os.path.join(STATIC_DIR, "index.html")
-    if not os.path.exists(index_path):
-        return {"hata": "index.html static klasorunde bulunamadi!"}
-    return FileResponse(index_path)
+    return FileResponse(os.path.join(STATIC_DIR, "index.html"))
 
 @app.get("/api/satellites")
 def get_satellites(sats: str = "G01"):
@@ -74,92 +65,95 @@ def get_satellites(sats: str = "G01"):
     
     for sat_id in selected:
         coords = [entry for entry in SP3_DATA if entry["id"] == sat_id]
-        if not coords:
-            continue
+        if not coords: continue
             
         track_points = []
         for c in coords:
             lat, lon, h = ecef_to_geodetic(c["x"], c["y"], c["z"])
             track_points.append({"lat": lat, "lon": lon, "alt": h, "time": c["time"].isoformat()})
             
-        kepler = KEPLER_DATA.get(sat_id, {})
-        instant_data = None
+        kepler_list = KEPLER_DATA.get(sat_id, [])
+        kepler = kepler_list[0] if kepler_list else {} # UI için ilk parametreyi al
+        
         vel_kms = 0.0
-        
-        # --- 3 BOYUTLU VEKTÖR MATEMATİĞİ VE KEPLER ÜRETİMİ ---
         if len(coords) >= 2:
-            p1 = coords[0]
-            p2 = coords[1]
+            p1, p2 = coords[0], coords[1]
             dt = (p2["time"] - p1["time"]).total_seconds()
-            
             if dt > 0:
-                # DÜZELTME: SP3 verisi KM ise METRE'ye çeviriyoruz (* 1000)
-                # Formüllerin çökmemesi için bu şart!
-                rx1, ry1, rz1 = p1["x"] * 1000, p1["y"] * 1000, p1["z"] * 1000
-                rx2, ry2, rz2 = p2["x"] * 1000, p2["y"] * 1000, p2["z"] * 1000
-                
-                vx = (rx2 - rx1) / dt # m/s
-                vy = (ry2 - ry1) / dt # m/s
-                vz = (rz2 - rz1) / dt # m/s
-                
-                # Arayüz için km/s'ye geri çevir
+                vx = (p2["x"] - p1["x"]) * 1000 / dt 
+                vy = (p2["y"] - p1["y"]) * 1000 / dt 
+                vz = (p2["z"] - p1["z"]) * 1000 / dt 
                 vel_kms = math.sqrt(vx**2 + vy**2 + vz**2) / 1000.0
-                
-                if not kepler:
-                    r_vec = [rx1, ry1, rz1]
-                    v_vec = [vx, vy, vz]
-                    try:
-                        # GLONASS ve Galileo için Kepler parametrelerini kitaptaki fonksiyonla üret
-                        kepler = calculate_kepler_from_state(r_vec, v_vec)
-                    except Exception as e:
-                        print(f"Kepler hesaplama hatası ({sat_id}): {e}")
         
-        if coords:
-            c0 = coords[0]
-            az, el, dist = ecef_to_topocentric(
-                c0["x"], c0["y"], c0["z"], 
-                STATION["lat"], STATION["lon"], STATION["h"]
-            )
-            
-            instant_data = {
-                "velocity_kms": vel_kms,
-                "topocentric": {
-                    "azimuth": az,
-                    "elevation": el,
-                    "distance_m": dist
-                }
-            }
+        c0 = coords[0]
+        az, el, dist = ecef_to_topocentric(c0["x"], c0["y"], c0["z"], STATION["lat"], STATION["lon"], STATION["h"])
+        
+        instant_data = {
+            "velocity_kms": vel_kms,
+            "topocentric": {"azimuth": az, "elevation": el, "distance_m": dist}
+        }
 
-        response_data.append({
-            "id": sat_id,
-            "track": track_points,
-            "kepler": kepler,
-            "instant_data": instant_data
-        })
+        response_data.append({"id": sat_id, "track": track_points, "kepler": kepler, "instant_data": instant_data})
         
     return {"status": "success", "data": response_data}
 
-# Yeni yazdığımız analiz modülünü en üste import etmeyi unutma:
-# from utils.compare_kepler import analyze_kepler_errors
+# -- ZAMAN DÖNÜŞÜM YARDIMCISI --
+def get_tk(t_epoch, toe):
+    """ SP3 zamanı ile Broadcast TOE (Time of Ephemeris) arasındaki saniye farkını hesaplar """
+    gps_epoch = datetime(1980, 1, 6)
+    delta = t_epoch - gps_epoch
+    sec_of_week = (delta.days % 7) * 86400 + delta.seconds
+    tk = sec_of_week - toe
+    
+    # Hafta atlaması (Crossover) düzeltmesi (IS-GPS-200)
+    if tk > 302400:
+        tk -= 604800
+    elif tk < -302400:
+        tk += 604800
+    return tk
 
 @app.get("/api/analysis")
 def get_kepler_analysis(sat: str = "G01"):
-    """
-    SP3 ve Broadcast verilerini karşılaştırarak,
-    arayüzdeki hata grafikleri (Error Charts) için zaman serisi datası yollar.
-    """
     sat_id = sat.strip().upper()
-    
-    # İlgili uydunun SP3 noktalarını filtrele
     coords = [entry for entry in SP3_DATA if entry["id"] == sat_id]
+    brdc_list = KEPLER_DATA.get(sat_id, [])
     
-    # Uydunun RINEX (Broadcast) Kepler verisini al
-    brdc_kepler = KEPLER_DATA.get(sat_id, {})
+    if len(coords) < 3 or not brdc_list:
+        return {"status": "error", "message": f"{sat_id} için yeterli SP3/Broadcast verisi yok."}
     
-    if not coords or not brdc_kepler:
-        return {"status": "error", "message": f"{sat_id} için yeterli SP3 veya Broadcast verisi bulunamadı. Lütfen bir GPS uydusu seçin."}
+    sp3_velocities = calculate_sp3_velocity_from_positions(coords)
     
-    # Fonksiyonumuzu çağırıp Günlük Hata Serisini üretiyoruz
-    error_series = analyze_kepler_errors(coords, brdc_kepler)
-    
-    return {"status": "success", "sat_id": sat_id, "analysis": error_series}
+    times_str, radial_err, along_err, cross_err = [], [], [], []
+
+    for i in range(len(coords)):
+        t_epoch = coords[i]['time']
+        
+        pos_ref = [coords[i]['x'] * 1000.0, coords[i]['y'] * 1000.0, coords[i]['z'] * 1000.0]
+        vel_ref = [sp3_velocities[i]['vx'], sp3_velocities[i]['vy'], sp3_velocities[i]['vz']]
+        
+        # O anki SP3 saatine EN YAKIN (Geçerli) yörünge parametresini bul
+        best_eph = None
+        min_abs_tk = float('inf')
+        best_tk = 0
+        
+        for eph in brdc_list:
+            current_tk = get_tk(t_epoch, eph['toe'])
+            if abs(current_tk) < min_abs_tk:
+                min_abs_tk = abs(current_tk)
+                best_eph = eph
+                best_tk = current_tk
+                
+        if best_eph:
+            # Geçerli yörünge seti ve doğru zaman farkı ile ECEF hesapla
+            pos_brdc = calculate_satpos_from_kepler(best_eph, best_tk)
+            
+            if pos_brdc != [0.0, 0.0, 0.0]:
+                rtn = ecef_to_rtn_error(pos_ref, vel_ref, pos_brdc)
+                times_str.append(t_epoch.strftime('%H:%M'))
+                radial_err.append(round(rtn['Radial (m)'], 3))
+                along_err.append(round(rtn['Along-track (m)'], 3))
+                cross_err.append(round(rtn['Cross-track (m)'], 3))
+
+    return {"status": "success", "sat_id": sat_id, "analysis": {
+        "times": times_str, "radial": radial_err, "along": along_err, "cross": cross_err
+    }}

@@ -83,6 +83,8 @@
         .close-ap-btn { background: transparent; border: none; color: #ef4444; font-size: 1.2rem; cursor: pointer; font-weight: bold; }
         .charts-container { flex: 1; display: flex; gap: 20px; padding: 15px 25px; overflow-x: auto; }
         .chart-box { flex: 1; min-width: 300px; background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.05); border-radius: 10px; padding: 10px; position: relative; }
+        
+        /* Loading overlay artık sadece veriler API'den çekilirken görünecek */
         .loading-overlay { position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.7); display: flex; justify-content: center; align-items: center; color: #38bdf8; font-weight: bold; border-radius: 10px; z-index: 5; display: none;}
 
         .cesium-viewer-bottom { display: none !important; }
@@ -119,13 +121,13 @@
 
     <div id="analysis-panel">
         <div class="ap-header">
-            <div class="ap-title">📊 Yörünge Hata Analizi (RTN / XYZ) | <span id="ap-sat-id" style="color:#fff;">G01</span></div>
+            <div class="ap-title">📊 Yörünge Hata Analizi (RTN Sistemi) | <span id="ap-sat-id" style="color:#fff;">G01</span></div>
             <button class="close-ap-btn" onclick="closeAnalysisPanel()">✖</button>
         </div>
         <div class="charts-container">
-            <div class="chart-box"><div class="loading-overlay">Hocadan Formül Bekleniyor...</div><canvas id="chartX"></canvas></div>
-            <div class="chart-box"><div class="loading-overlay">Hocadan Formül Bekleniyor...</div><canvas id="chartY"></canvas></div>
-            <div class="chart-box"><div class="loading-overlay">Hocadan Formül Bekleniyor...</div><canvas id="chartZ"></canvas></div>
+            <div class="chart-box"><div class="loading-overlay" id="loadingX">Veriler Çekiliyor...</div><canvas id="chartX"></canvas></div>
+            <div class="chart-box"><div class="loading-overlay" id="loadingY">Veriler Çekiliyor...</div><canvas id="chartY"></canvas></div>
+            <div class="chart-box"><div class="loading-overlay" id="loadingZ">Veriler Çekiliyor...</div><canvas id="chartZ"></canvas></div>
         </div>
     </div>
 
@@ -184,14 +186,12 @@
             }
         }
 
-        // --- HARİTA AYARLARI DÜZELTİLDİ ---
         const viewer = new Cesium.Viewer('cesiumContainer', {
             baseLayerPicker: false, geocoder: false, animation: false, timeline: false, infoBox: false, navigationHelpButton: false, sceneModePicker: true, 
             imageryProvider: new Cesium.TileMapServiceImageryProvider({ url: Cesium.buildModuleUrl('Assets/Textures/NaturalEarthII') })
         });
         viewer.imageryLayers.addImageryProvider(new Cesium.UrlTemplateImageryProvider({ url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}' }));
         
-        // HATA BURADAYDI: Güneş ışığı Dünya'yı karartıyordu, kapattık. Her yer aydınlık!
         viewer.scene.globe.enableLighting = false; 
 
         function resetCamera() { viewer.camera.flyHome(1.5); }
@@ -206,27 +206,58 @@
             document.querySelectorAll('.loading-overlay').forEach(el => el.style.display = 'flex');
 
             try {
+                // Backend'den (api.py) yazdığımız hata analizi rotasını çağırıyoruz
                 const response = await fetch(`http://localhost:8000/api/analysis?sat=${satId}`);
                 const data = await response.json();
+                
                 if (data.status === 'error') { alert(data.message); closeAnalysisPanel(); return; }
+                
                 document.querySelectorAll('.loading-overlay').forEach(el => el.style.display = 'none');
+                
+                // Gelen gerçek veriyi grafiklere basıyoruz
                 renderCharts(data.analysis);
-            } catch (error) { alert("API Error"); closeAnalysisPanel(); }
+            } catch (error) { 
+                alert("API Error: Sunucuya bağlanılamadı. Lütfen api.py'nin çalıştığından emin olun."); 
+                closeAnalysisPanel(); 
+            }
         }
 
         function renderCharts(analysisData) {
             if(myChartA) myChartA.destroy(); if(myChartE) myChartE.destroy(); if(myChartI) myChartI.destroy();
             
-            // Veri gelene kadar grafikleri boş (0) çizgisiyle tutuyoruz
-            const labels = ["00:00", "04:00", "08:00", "12:00", "16:00", "20:00", "23:59"];
-            const emptyData = [0, 0, 0, 0, 0, 0, 0]; 
+            // Python'dan dönen gerçek zaman ve RTN verileri
+            const labels = analysisData.times; 
+            const dataRadial = analysisData.radial;
+            const dataAlong = analysisData.along;
+            const dataCross = analysisData.cross;
 
             Chart.defaults.color = '#94a3b8'; Chart.defaults.font.family = 'Inter';
-            const commonOptions = { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { suggestedMin: -10, suggestedMax: 10, grid: { color: 'rgba(255,255,255,0.05)' } } } };
+            
+            // suggestedMin/Max değerlerini sildim ki grafik gelen veriye göre (oto-scale) esnesin.
+            const commonOptions = { 
+                responsive: true, 
+                maintainAspectRatio: false, 
+                plugins: { legend: { display: false } }, 
+                scales: { y: { grid: { color: 'rgba(255,255,255,0.05)' } } } 
+            };
 
-            myChartA = new Chart(document.getElementById('chartX'), { type: 'line', data: { labels: labels, datasets: [{ label: 'Δ X (m)', data: emptyData, borderColor: '#38bdf8', borderWidth: 2 }] }, options: { ...commonOptions, plugins: { title: { display: true, text: 'X Ekseni (Radyal) Hatası [Metre]' } } } });
-            myChartE = new Chart(document.getElementById('chartY'), { type: 'line', data: { labels: labels, datasets: [{ label: 'Δ Y (m)', data: emptyData, borderColor: '#facc15', borderWidth: 2 }] }, options: { ...commonOptions, plugins: { title: { display: true, text: 'Y Ekseni (Transvers) Hatası [Metre]' } } } });
-            myChartI = new Chart(document.getElementById('chartZ'), { type: 'line', data: { labels: labels, datasets: [{ label: 'Δ Z (m)', data: emptyData, borderColor: '#ef4444', borderWidth: 2 }] }, options: { ...commonOptions, plugins: { title: { display: true, text: 'Z Ekseni (Normal) Hatası [Metre]' } } } });
+            myChartA = new Chart(document.getElementById('chartX'), { 
+                type: 'line', 
+                data: { labels: labels, datasets: [{ label: 'Radial (m)', data: dataRadial, borderColor: '#38bdf8', borderWidth: 2 }] }, 
+                options: { ...commonOptions, plugins: { title: { display: true, text: 'Radial (Radyal) Hatası [Metre]' } } } 
+            });
+            
+            myChartE = new Chart(document.getElementById('chartY'), { 
+                type: 'line', 
+                data: { labels: labels, datasets: [{ label: 'Along-track (m)', data: dataAlong, borderColor: '#facc15', borderWidth: 2 }] }, 
+                options: { ...commonOptions, plugins: { title: { display: true, text: 'Along-track (Transvers) Hatası [Metre]' } } } 
+            });
+            
+            myChartI = new Chart(document.getElementById('chartZ'), { 
+                type: 'line', 
+                data: { labels: labels, datasets: [{ label: 'Cross-track (m)', data: dataCross, borderColor: '#ef4444', borderWidth: 2 }] }, 
+                options: { ...commonOptions, plugins: { title: { display: true, text: 'Cross-track (Normal) Hatası [Metre]' } } } 
+            });
         }
 
         async function loadSatellites() {
@@ -273,7 +304,6 @@
                             analysisBtnHTML = `<button class="action-icon-btn btn-analysis" onclick="openAnalysis('${sat.id}')">${lang.btnAnlz}</button>`;
                         }
 
-                        // İLK TASARIMA TAM DÖNÜŞ (Alt alta sade liste)
                         infoDiv.innerHTML += `
                             <div class="sat-card ${prefix}">
                                 <div class="sat-card-header">
