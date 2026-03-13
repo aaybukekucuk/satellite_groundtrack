@@ -3,67 +3,87 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Multi-GNSS Tracker</title>
+    <title>GNSS Center</title>
     <script src="https://cesium.com/downloads/cesiumjs/releases/1.114/Build/Cesium/Cesium.js"></script>
     <link href="https://cesium.com/downloads/cesiumjs/releases/1.114/Build/Cesium/Widgets/widgets.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap');
         
         body { margin: 0; padding: 0; background-color: #000; color: #fff; font-family: 'Inter', sans-serif; overflow: hidden; }
         #cesiumContainer { width: 100vw; height: 100vh; position: absolute; top: 0; left: 0; z-index: 1; }
         
-        #panel {
-            position: absolute; top: 25px; left: 25px; z-index: 10; width: 420px; max-height: 90vh;
-            background: rgba(15, 23, 42, 0.75); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
-            border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 20px;
-            padding: 25px; box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
-            display: flex; flex-direction: column; transition: all 0.3s ease;
-        }
-        
-        .header-row { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 15px; margin-bottom: 15px; }
-        h2 { margin: 0; font-size: 1.3rem; color: #38bdf8; font-weight: 800; }
-        .lang-btn { background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); padding: 6px 12px; border-radius: 8px; font-size: 0.8rem; color: #fff; cursor: pointer; transition: 0.2s;}
-        
-        .tabs { display: flex; gap: 5px; margin-bottom: 15px; background: rgba(0,0,0,0.3); padding: 5px; border-radius: 10px; }
-        .tab-btn { flex: 1; background: transparent; border: none; color: #94a3b8; padding: 8px 0; font-size: 0.8rem; font-weight: 600; cursor: pointer; border-radius: 6px; transition: 0.3s; }
-        .tab-btn.active { background: rgba(56, 189, 248, 0.2); color: #38bdf8; box-shadow: 0 2px 10px rgba(0,0,0,0.2); }
-        .tab-btn:hover:not(.active) { color: #fff; }
+        /* SOL PANEL - İlk tasarımdaki gibi daha kompakt ve sade */
+        #panel-wrapper { position: absolute; top: 20px; left: 20px; z-index: 10; display: flex; align-items: flex-start; gap: 10px; transition: transform 0.4s ease; }
+        #panel-wrapper.collapsed { transform: translateX(-400px); }
 
-        .sat-grid { display: grid; grid-template-columns: repeat(8, 1fr); gap: 6px; margin-bottom: 15px; }
-        .sat-btn { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; color: #cbd5e1; font-size: 0.75rem; font-weight: 600; padding: 8px 0; cursor: pointer; text-align: center; transition: 0.2s; }
-        .sat-btn:hover { background: rgba(56, 189, 248, 0.2); }
-        .sat-btn.active.G { background: #0ea5e9; border-color: #38bdf8; color: #fff; }
-        .sat-btn.active.R { background: #ef4444; border-color: #f87171; color: #fff; }
-        .sat-btn.active.E { background: #eab308; border-color: #facc15; color: #fff; }
+        #panel {
+            width: 360px; max-height: 85vh;
+            background: rgba(13, 17, 28, 0.9); backdrop-filter: blur(15px); -webkit-backdrop-filter: blur(15px);
+            border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 12px;
+            padding: 20px; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.8);
+            display: flex; flex-direction: column;
+        }
+
+        .toggle-btn { background: rgba(13, 17, 28, 0.9); border: 1px solid rgba(255,255,255,0.1); color: #fff; padding: 10px 8px; border-radius: 8px; cursor: pointer; margin-top: 10px; }
+
+        /* Reset View (Artık sağ altta, daha derli toplu) */
+        .reset-cam-btn { position: absolute; bottom: 20px; right: 20px; z-index: 10; background: rgba(13, 17, 28, 0.8); border: 1px solid rgba(255,255,255,0.2); color: white; padding: 8px 12px; border-radius: 8px; cursor: pointer; transition: 0.2s; font-size: 0.85rem;}
+        .reset-cam-btn:hover { background: #38bdf8; color: #000; }
+
+        /* Başlık ve Dil */
+        .header-row { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 12px; margin-bottom: 15px; }
+        h2 { margin: 0; font-size: 1.2rem; color: #38bdf8; font-weight: 800; }
+        .lang-btn { background: transparent; border: 1px solid rgba(255,255,255,0.3); padding: 4px 8px; border-radius: 6px; font-size: 0.75rem; color: #cbd5e1; cursor: pointer;}
         
-        .main-btn { width: 100%; background: linear-gradient(135deg, #0284c7, #0ea5e9); border: none; color: white; padding: 12px; border-radius: 10px; cursor: pointer; font-weight: 800; font-size: 1rem; transition: 0.3s; margin-bottom: 15px;}
-        .main-btn:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(2, 132, 199, 0.6); }
+        /* Sekmeler ve Matris */
+        .tabs { display: flex; gap: 5px; margin-bottom: 15px; }
+        .tab-btn { flex: 1; background: rgba(255,255,255,0.05); border: 1px solid transparent; color: #94a3b8; padding: 6px 0; font-size: 0.75rem; font-weight: 600; cursor: pointer; border-radius: 6px; }
+        .tab-btn.active { background: rgba(56, 189, 248, 0.15); color: #38bdf8; border-color: rgba(56, 189, 248, 0.3); }
+
+        .sat-grid { display: grid; grid-template-columns: repeat(8, 1fr); gap: 4px; margin-bottom: 15px; }
+        .sat-btn { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; color: #cbd5e1; font-size: 0.7rem; padding: 5px 0; cursor: pointer; text-align: center; }
+        .sat-btn.active.G { background: #0ea5e9; color: #fff; border-color: #38bdf8; }
+        .sat-btn.active.R { background: #ef4444; color: #fff; border-color: #f87171; }
+        .sat-btn.active.E { background: #eab308; color: #fff; border-color: #facc15; }
+        
+        .main-btn { width: 100%; background: #0ea5e9; border: none; color: white; padding: 10px; border-radius: 8px; cursor: pointer; font-weight: 800; font-size: 0.9rem; margin-bottom: 10px;}
+        .main-btn:hover { background: #0284c7; }
 
         .data-container { flex: 1; overflow-y: auto; padding-right: 5px; }
-        .data-container::-webkit-scrollbar { width: 6px; }
-        .data-container::-webkit-scrollbar-thumb { background: rgba(56, 189, 248, 0.5); border-radius: 10px; }
+        .data-container::-webkit-scrollbar { width: 4px; }
+        .data-container::-webkit-scrollbar-thumb { background: #38bdf8; border-radius: 10px; }
         
-        .ui-msg { font-size: 0.9rem; color: #cbd5e1; text-align: center; margin-top: 20px; }
+        /* UYDU KARTLARI (İLK TASARIMA GERİ DÖNÜŞ) */
+        .sat-card { background: rgba(0,0,0,0.3); border-top: 1px solid rgba(255,255,255,0.05); border-right: 1px solid rgba(255,255,255,0.05); border-bottom: 1px solid rgba(255,255,255,0.05); padding: 15px; margin-bottom: 12px; border-radius: 0 8px 8px 0; position: relative;}
+        .sat-card.G { border-left: 3px solid #facc15; } /* İlk tasarımdaki sarı çizgi */
+        .sat-card.R { border-left: 3px solid #ef4444; }
+        .sat-card.E { border-left: 3px solid #38bdf8; }
 
-        .sat-card { background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.1); padding: 15px; margin-bottom: 15px; border-radius: 0 12px 12px 0; position: relative;}
-        .sat-card.G { border-left: 4px solid #38bdf8; }
-        .sat-card.R { border-left: 4px solid #ef4444; }
-        .sat-card.E { border-left: 4px solid #facc15; }
-
-        .sat-card-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 8px; margin-bottom: 12px; }
-        .sat-title { color: #fff; font-weight: 800; font-size: 1.2rem; display: flex; align-items: center; gap: 8px;}
+        .sat-card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+        .sat-title { color: #facc15; font-weight: 800; font-size: 1.1rem; }
+        .sat-card.R .sat-title { color: #ef4444; }
+        .sat-card.E .sat-title { color: #38bdf8; }
         
-        /* YENİ: Kart İçi İnteraktif Butonlar */
-        .card-actions { display: flex; gap: 8px; }
-        .action-icon-btn { background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: #fff; padding: 4px 8px; border-radius: 6px; font-size: 0.75rem; cursor: pointer; transition: 0.2s; font-weight: 600;}
-        .action-icon-btn:hover { background: rgba(255,255,255,0.25); }
-        .action-icon-btn.off { background: rgba(239, 68, 68, 0.2); border-color: rgba(239, 68, 68, 0.5); color: #fca5a5; }
+        .card-actions { display: flex; gap: 5px; }
+        .action-icon-btn { background: rgba(255,255,255,0.1); border: none; color: #fff; padding: 4px 6px; border-radius: 4px; font-size: 0.7rem; cursor: pointer; }
+        .action-icon-btn:hover { background: rgba(255,255,255,0.2); }
+        .btn-analysis { background: rgba(245, 158, 11, 0.2); color: #fcd34d; }
 
-        .data-grid-inner { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 0.85rem; color: #94a3b8; }
-        .d-box { display: flex; flex-direction: column; }
-        .d-label { font-size: 0.75rem; text-transform: uppercase; margin-bottom: 2px; }
-        .d-val { color: #fff; font-weight: 600; font-size: 0.95rem; }
+        /* İlk tasarımdaki gibi alt alta liste görünümü */
+        .data-list { font-size: 0.8rem; color: #cbd5e1; line-height: 1.6; }
+        .data-list b { color: #fff; font-weight: 600; }
+
+        /* HATA ANALİZ PANELİ */
+        #analysis-panel { position: absolute; bottom: 0; left: 0; width: 100vw; height: 35vh; background: rgba(4, 9, 20, 0.95); border-top: 1px solid rgba(56, 189, 248, 0.3); z-index: 20; display: flex; flex-direction: column; transform: translateY(100%); transition: transform 0.4s ease; box-shadow: 0 -10px 40px rgba(0,0,0,0.8); }
+        #analysis-panel.open { transform: translateY(0); }
+        .ap-header { display: flex; justify-content: space-between; align-items: center; padding: 10px 25px; background: rgba(255,255,255,0.05); border-bottom: 1px solid rgba(255,255,255,0.1); }
+        .ap-title { font-size: 1rem; color: #38bdf8; font-weight: bold; }
+        .close-ap-btn { background: transparent; border: none; color: #ef4444; font-size: 1.2rem; cursor: pointer; font-weight: bold; }
+        .charts-container { flex: 1; display: flex; gap: 20px; padding: 15px 25px; overflow-x: auto; }
+        .chart-box { flex: 1; min-width: 300px; background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.05); border-radius: 10px; padding: 10px; position: relative; }
+        .loading-overlay { position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.7); display: flex; justify-content: center; align-items: center; color: #38bdf8; font-weight: bold; border-radius: 10px; z-index: 5; display: none;}
 
         .cesium-viewer-bottom { display: none !important; }
     </style>
@@ -71,120 +91,142 @@
 <body>
 
     <div id="cesiumContainer"></div>
+    <button class="reset-cam-btn" onclick="resetCamera()">🌍 Reset View</button>
 
-    <div id="panel">
-        <div class="header-row">
-            <h2 id="ui-title">🛰️ Multi-GNSS Tracker</h2>
-            <button class="lang-btn" onclick="toggleLanguage()" id="lang-btn">EN / TR</button>
+    <div id="panel-wrapper">
+        <div id="panel">
+            <div class="header-row">
+                <h2 id="ui-title">🛰️ GNSS Center</h2>
+                <button class="lang-btn" onclick="toggleLanguage()">EN/TR</button>
+            </div>
+            
+            <div class="tabs">
+                <button class="tab-btn active" onclick="switchTab('G')" id="tab-G">GPS</button>
+                <button class="tab-btn" onclick="switchTab('R')" id="tab-R">GLONASS</button>
+                <button class="tab-btn" onclick="switchTab('E')" id="tab-E">GALILEO</button>
+            </div>
+
+            <div class="sat-grid" id="sat-grid"></div>
+
+            <button onclick="loadSatellites()" class="main-btn" id="ui-load-btn">Load Constellation</button>
+            
+            <div id="info" class="data-container">
+                <div style="font-size: 0.85rem; color: #cbd5e1; text-align: center; margin-top: 10px;" id="ui-waiting">Select satellites.</div>
+            </div>
         </div>
-        
-        <div class="tabs">
-            <button class="tab-btn active" onclick="switchTab('G')" id="tab-G">GPS (USA)</button>
-            <button class="tab-btn" onclick="switchTab('R')" id="tab-R">GLONASS (RUS)</button>
-            <button class="tab-btn" onclick="switchTab('E')" id="tab-E">GALILEO (EU)</button>
+        <button class="toggle-btn" onclick="togglePanel()" id="toggle-btn">◄</button>
+    </div>
+
+    <div id="analysis-panel">
+        <div class="ap-header">
+            <div class="ap-title">📊 Yörünge Hata Analizi (RTN / XYZ) | <span id="ap-sat-id" style="color:#fff;">G01</span></div>
+            <button class="close-ap-btn" onclick="closeAnalysisPanel()">✖</button>
         </div>
-
-        <div class="sat-grid" id="sat-grid"></div>
-
-        <button onclick="loadSatellites()" class="main-btn" id="ui-load-btn">Load Selected</button>
-        
-        <div id="info" class="data-container">
-            <div class="ui-msg" id="ui-waiting">Select satellites to track.</div>
+        <div class="charts-container">
+            <div class="chart-box"><div class="loading-overlay">Hocadan Formül Bekleniyor...</div><canvas id="chartX"></canvas></div>
+            <div class="chart-box"><div class="loading-overlay">Hocadan Formül Bekleniyor...</div><canvas id="chartY"></canvas></div>
+            <div class="chart-box"><div class="loading-overlay">Hocadan Formül Bekleniyor...</div><canvas id="chartZ"></canvas></div>
         </div>
     </div>
 
     <script>
         const i18n = {
-            en: { title: "🛰️ Multi-GNSS Tracker", btnLoad: "Load Multi-GNSS", waiting: "Select satellites from multiple constellations and click Load.", loading: "Calculating...", error: "API connection failed.", vel: "Velocity", alt: "Altitude", pos: "Lat / Lon", azi: "Azi / Ele", sma: "Semi-Major Axis", ecc: "Eccentricity", na: "N/A", btnFocus: "🎯 Focus", btnOrbit: "👁️ Orbit" },
-            tr: { title: "🛰️ Çoklu-GNSS Takibi", btnLoad: "Çoklu-GNSS Yükle", waiting: "Farklı takımyıldızlardan uyduları seçip Yükle'ye tıklayın.", loading: "Hesaplanıyor...", error: "API'ye bağlanılamadı.", vel: "Hız (km/s)", alt: "İrtifa (km)", pos: "Enlem / Boylam", azi: "Azimut / Elev.", sma: "Yarı Büyük Eksen", ecc: "Dışmerkezlik", na: "Veri Yok", btnFocus: "🎯 Odaklan", btnOrbit: "👁️ İz" }
+            en: { title: "Satellite Tracking", btnLoad: "Load", waiting: "Select satellites.", loading: "Loading...", na: "N/A", focus: "🎯", track: "👁️", btnAnlz: "📊 Analyze" },
+            tr: { title: "Uydu Takip Sistemi", btnLoad: "Yükle", waiting: "Uydu seçin.", loading: "Yükleniyor...", na: "-", focus: "🎯", track: "👁️", btnAnlz: "📊 Analiz" }
         };
 
         let currentLang = 'en'; 
-        let selectedSats = new Set(['G01', 'E01', 'R01']); 
+        let selectedSats = new Set(['G01', 'G02', 'G12']); 
         let currentConstellation = 'G'; 
-        
-        // Uyduların haritadaki 3D objelerini hafızada tutacağımız sözlük (Etkileşim için)
         let satelliteEntities = {}; 
+        let isPanelOpen = true;
 
-        const constellationConfig = { 'G': 32, 'R': 24, 'E': 36 };
+        let myChartA = null; let myChartE = null; let myChartI = null;
+        const constConfig = { 'G': 32, 'R': 24, 'E': 36 };
 
         function updateUI() {
             const lang = i18n[currentLang];
             document.getElementById('ui-title').innerText = lang.title;
             document.getElementById('ui-load-btn').innerText = lang.btnLoad;
-            
-            const infoDiv = document.getElementById('info');
-            if(infoDiv.innerHTML.includes('ui-waiting')) {
-                infoDiv.innerHTML = `<div class="ui-msg" id="ui-waiting">${lang.waiting}</div>`;
-            }
-            
-            // Kartlardaki buton metinlerini güncelle
-            document.querySelectorAll('.btn-focus').forEach(b => b.innerText = lang.btnFocus);
-            document.querySelectorAll('.btn-orbit').forEach(b => {
-                if(!b.classList.contains('off')) b.innerText = lang.btnOrbit;
-            });
+            document.querySelectorAll('.btn-analysis').forEach(b => b.innerText = lang.btnAnlz);
         }
 
         function toggleLanguage() { currentLang = currentLang === 'en' ? 'tr' : 'en'; updateUI(); }
 
-        function switchTab(constellation) {
-            currentConstellation = constellation;
+        function togglePanel() {
+            isPanelOpen = !isPanelOpen;
+            const wrapper = document.getElementById('panel-wrapper');
+            const btn = document.getElementById('toggle-btn');
+            if (isPanelOpen) { wrapper.classList.remove('collapsed'); btn.innerText = '◄'; } 
+            else { wrapper.classList.add('collapsed'); btn.innerText = '►'; }
+        }
+
+        function switchTab(const_id) {
+            currentConstellation = const_id;
             document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
-            document.getElementById(`tab-${constellation}`).classList.add('active');
+            document.getElementById(`tab-${const_id}`).classList.add('active');
             buildGrid();
         }
 
         function buildGrid() {
             const grid = document.getElementById('sat-grid');
             grid.innerHTML = '';
-            const maxSats = constellationConfig[currentConstellation];
-            const prefix = currentConstellation;
-
-            for(let i = 1; i <= maxSats; i++) {
-                const satId = `${prefix}${i.toString().padStart(2, '0')}`;
+            for(let i = 1; i <= constConfig[currentConstellation]; i++) {
+                const satId = `${currentConstellation}${i.toString().padStart(2, '0')}`;
                 const btn = document.createElement('div');
-                btn.className = `sat-btn ${selectedSats.has(satId) ? 'active ' + prefix : ''}`;
+                btn.className = `sat-btn ${selectedSats.has(satId) ? 'active ' + currentConstellation : ''}`;
                 btn.innerText = satId;
                 btn.onclick = () => {
                     if(selectedSats.has(satId)) { selectedSats.delete(satId); btn.className = 'sat-btn'; } 
-                    else { selectedSats.add(satId); btn.className = `sat-btn active ${prefix}`; }
+                    else { selectedSats.add(satId); btn.className = `sat-btn active ${currentConstellation}`; }
                 };
                 grid.appendChild(btn);
             }
         }
 
-        // Çift Katmanlı Harita
+        // --- HARİTA AYARLARI DÜZELTİLDİ ---
         const viewer = new Cesium.Viewer('cesiumContainer', {
             baseLayerPicker: false, geocoder: false, animation: false, timeline: false, infoBox: false, navigationHelpButton: false, sceneModePicker: true, 
             imageryProvider: new Cesium.TileMapServiceImageryProvider({ url: Cesium.buildModuleUrl('Assets/Textures/NaturalEarthII') })
         });
         viewer.imageryLayers.addImageryProvider(new Cesium.UrlTemplateImageryProvider({ url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}' }));
-        viewer.scene.globe.enableLighting = true;
+        
+        // HATA BURADAYDI: Güneş ışığı Dünya'yı karartıyordu, kapattık. Her yer aydınlık!
+        viewer.scene.globe.enableLighting = false; 
 
-        // --- YENİ: İNTERAKTİF KAMERA VE GİZLEME FONKSİYONLARI ---
-        function focusSatellite(satId) {
-            if(satelliteEntities[satId] && satelliteEntities[satId].point) {
-                // Kamerayı seçilen uydunun tepesine, hafif açılı bir şekilde uçurur
-                viewer.flyTo(satelliteEntities[satId].point, {
-                    duration: 2.0,
-                    offset: new Cesium.HeadingPitchRange(0, -Cesium.Math.PI_OVER_FOUR, 15000000)
-                });
-            }
+        function resetCamera() { viewer.camera.flyHome(1.5); }
+        function focusSatellite(satId) { if(satelliteEntities[satId] && satelliteEntities[satId].point) viewer.flyTo(satelliteEntities[satId].point, { duration: 1.5, offset: new Cesium.HeadingPitchRange(0, -Cesium.Math.PI_OVER_FOUR, 15000000) }); }
+
+        function closeAnalysisPanel() { document.getElementById('analysis-panel').classList.remove('open'); }
+
+        async function openAnalysis(satId) {
+            if (!satId.startsWith('G')) { alert("Sadece GPS uydularının Yayınlanmış Kepler verisi kıyaslanabilir."); return; }
+            document.getElementById('ap-sat-id').innerText = satId;
+            document.getElementById('analysis-panel').classList.add('open');
+            document.querySelectorAll('.loading-overlay').forEach(el => el.style.display = 'flex');
+
+            try {
+                const response = await fetch(`http://localhost:8000/api/analysis?sat=${satId}`);
+                const data = await response.json();
+                if (data.status === 'error') { alert(data.message); closeAnalysisPanel(); return; }
+                document.querySelectorAll('.loading-overlay').forEach(el => el.style.display = 'none');
+                renderCharts(data.analysis);
+            } catch (error) { alert("API Error"); closeAnalysisPanel(); }
         }
 
-        function toggleOrbit(satId, btnElement) {
-            if(satelliteEntities[satId] && satelliteEntities[satId].track) {
-                const trackEntity = satelliteEntities[satId].track;
-                trackEntity.show = !trackEntity.show; // Göster/Gizle
-                
-                if(trackEntity.show) {
-                    btnElement.classList.remove('off');
-                    btnElement.innerText = i18n[currentLang].btnOrbit;
-                } else {
-                    btnElement.classList.add('off');
-                    btnElement.innerText = "👁️ Kapatıldı";
-                }
-            }
+        function renderCharts(analysisData) {
+            if(myChartA) myChartA.destroy(); if(myChartE) myChartE.destroy(); if(myChartI) myChartI.destroy();
+            
+            // Veri gelene kadar grafikleri boş (0) çizgisiyle tutuyoruz
+            const labels = ["00:00", "04:00", "08:00", "12:00", "16:00", "20:00", "23:59"];
+            const emptyData = [0, 0, 0, 0, 0, 0, 0]; 
+
+            Chart.defaults.color = '#94a3b8'; Chart.defaults.font.family = 'Inter';
+            const commonOptions = { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { suggestedMin: -10, suggestedMax: 10, grid: { color: 'rgba(255,255,255,0.05)' } } } };
+
+            myChartA = new Chart(document.getElementById('chartX'), { type: 'line', data: { labels: labels, datasets: [{ label: 'Δ X (m)', data: emptyData, borderColor: '#38bdf8', borderWidth: 2 }] }, options: { ...commonOptions, plugins: { title: { display: true, text: 'X Ekseni (Radyal) Hatası [Metre]' } } } });
+            myChartE = new Chart(document.getElementById('chartY'), { type: 'line', data: { labels: labels, datasets: [{ label: 'Δ Y (m)', data: emptyData, borderColor: '#facc15', borderWidth: 2 }] }, options: { ...commonOptions, plugins: { title: { display: true, text: 'Y Ekseni (Transvers) Hatası [Metre]' } } } });
+            myChartI = new Chart(document.getElementById('chartZ'), { type: 'line', data: { labels: labels, datasets: [{ label: 'Δ Z (m)', data: emptyData, borderColor: '#ef4444', borderWidth: 2 }] }, options: { ...commonOptions, plugins: { title: { display: true, text: 'Z Ekseni (Normal) Hatası [Metre]' } } } });
         }
 
         async function loadSatellites() {
@@ -192,9 +234,9 @@
             const lang = i18n[currentLang];
             if(selectedSats.size === 0) return;
 
-            infoDiv.innerHTML = `<div class="ui-msg" style="color:#38bdf8;">${lang.loading}</div>`;
+            infoDiv.innerHTML = `<div style="text-align:center; color:#38bdf8; margin-top:20px;">${lang.loading}</div>`;
             viewer.entities.removeAll(); 
-            satelliteEntities = {}; // Hafızayı temizle
+            satelliteEntities = {}; 
 
             const satQuery = Array.from(selectedSats).join(',');
 
@@ -210,62 +252,50 @@
                     if(prefix === 'E') trackColor = Cesium.Color.GOLD; 
 
                     const positions = sat.track.map(p => Cesium.Cartesian3.fromDegrees(p.lon, p.lat, p.alt));
-                    
-                    // Yörünge objesini oluştur ve hafızaya al
-                    const trackEntity = viewer.entities.add({
-                        name: `Track ${sat.id}`,
-                        polyline: { positions: positions, width: 2, material: new Cesium.PolylineGlowMaterialProperty({ glowPower: 0.1, color: trackColor }) }
-                    });
+                    const trackEntity = viewer.entities.add({ polyline: { positions: positions, width: 2, material: new Cesium.PolylineGlowMaterialProperty({ glowPower: 0.1, color: trackColor }) } });
 
                     let pointEntity = null;
                     if (sat.track.length > 0) {
                         const currentPos = sat.track[0];
-                        // Nokta objesini oluştur ve hafızaya al
-                        pointEntity = viewer.entities.add({
-                            name: sat.id,
-                            position: Cesium.Cartesian3.fromDegrees(currentPos.lon, currentPos.lat, currentPos.alt),
-                            point: { pixelSize: 12, color: trackColor, outlineColor: Cesium.Color.BLACK, outlineWidth: 2 },
-                            label: { text: sat.id, font: 'bold 12pt Inter', style: Cesium.LabelStyle.FILL_AND_OUTLINE, outlineWidth: 3, verticalOrigin: Cesium.VerticalOrigin.BOTTOM, pixelOffset: new Cesium.Cartesian2(0, -15) }
-                        });
+                        pointEntity = viewer.entities.add({ position: Cesium.Cartesian3.fromDegrees(currentPos.lon, currentPos.lat, currentPos.alt), point: { pixelSize: 10, color: trackColor, outlineColor: Cesium.Color.BLACK, outlineWidth: 1 }, label: { text: sat.id, font: 'bold 10pt Inter', style: Cesium.LabelStyle.FILL_AND_OUTLINE, outlineWidth: 2, verticalOrigin: Cesium.VerticalOrigin.BOTTOM, pixelOffset: new Cesium.Cartesian2(0, -10) } });
                     }
 
                     satelliteEntities[sat.id] = { track: trackEntity, point: pointEntity };
-
-                    const k = sat.kepler;
-                    const r = sat.instant_data;
-                    const c = sat.track[0];
+                    const k = sat.kepler; const r = sat.instant_data; const c = sat.track[0];
 
                     if(r && c) {
-                        const a_val = k && k['A (Yarı Büyük Eksen) [m]'] ? ((k['A (Yarı Büyük Eksen) [m]']/1000).toFixed(1)) : lang.na;
+                        const a_val = k && k['A (Yarı Büyük Eksen) [m]'] ? ((k['A (Yarı Büyük Eksen) [m]']/1000).toFixed(2)) : lang.na;
                         const e_val = k && k['e (Dışmerkezlik)'] ? k['e (Dışmerkezlik)'].toFixed(5) : lang.na;
+                        const i_val = k && k['i0 (Yörünge Eğikliği)'] ? k['i0 (Yörünge Eğikliği)'].toFixed(4) + ' rad' : lang.na;
+                        
+                        let analysisBtnHTML = '';
+                        if (prefix === 'G') {
+                            analysisBtnHTML = `<button class="action-icon-btn btn-analysis" onclick="openAnalysis('${sat.id}')">${lang.btnAnlz}</button>`;
+                        }
 
+                        // İLK TASARIMA TAM DÖNÜŞ (Alt alta sade liste)
                         infoDiv.innerHTML += `
                             <div class="sat-card ${prefix}">
                                 <div class="sat-card-header">
                                     <div class="sat-title">${sat.id}</div>
                                     <div class="card-actions">
-                                        <button class="action-icon-btn btn-focus" onclick="focusSatellite('${sat.id}')">${lang.btnFocus}</button>
-                                        <button class="action-icon-btn btn-orbit" onclick="toggleOrbit('${sat.id}', this)">${lang.btnOrbit}</button>
+                                        <button class="action-icon-btn" onclick="focusSatellite('${sat.id}')">${lang.focus}</button>
+                                        ${analysisBtnHTML}
                                     </div>
                                 </div>
-                                <div class="data-grid-inner">
-                                    <div class="d-box"><span class="d-label">${lang.vel}</span><span class="d-val" style="color:#facc15;">${r.velocity_kms.toFixed(2)}</span></div>
-                                    <div class="d-box"><span class="d-label">${lang.alt}</span><span class="d-val">${(c.alt/1000).toFixed(0)}</span></div>
-                                    <div class="d-box"><span class="d-label">${lang.pos}</span><span class="d-val">${c.lat.toFixed(1)}° / ${c.lon.toFixed(1)}°</span></div>
-                                    <div class="d-box"><span class="d-label">${lang.azi}</span><span class="d-val">${r.topocentric.azimuth.toFixed(1)}° / ${r.topocentric.elevation.toFixed(1)}°</span></div>
-                                    <div class="d-box" style="margin-top: 8px;"><span class="d-label">${lang.sma}</span><span class="d-val">${a_val}</span></div>
-                                    <div class="d-box" style="margin-top: 8px;"><span class="d-label">${lang.ecc}</span><span class="d-val">${e_val}</span></div>
+                                <div class="data-list">
+                                    Semi-Major Axis (A): <b>${a_val} km</b><br>
+                                    Eccentricity (e): <b>${e_val}</b><br>
+                                    Inclination (i0): <b>${i_val}</b><br>
+                                    Velocity: <b>${r.velocity_kms.toFixed(2)} km/s</b><br>
+                                    Altitude: <b>${(c.alt/1000).toFixed(0)} km</b>
                                 </div>
                             </div>
                         `;
                     }
                 });
-                
                 viewer.zoomTo(viewer.entities);
-
-            } catch (error) {
-                infoDiv.innerHTML = `<div class="ui-msg ui-error">${lang.error}</div>`;
-            }
+            } catch (error) { infoDiv.innerHTML = `<div style="color:#ef4444; text-align:center;">${lang.error}</div>`; }
         }
 
         buildGrid();

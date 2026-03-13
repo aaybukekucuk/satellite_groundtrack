@@ -4,24 +4,25 @@ from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 import os
 import sys
+import math
 
 # Dosya yollarını dinamik ve kusursuz yapmak için (Pathing)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 STATIC_DIR = os.path.join(BASE_DIR, "static")
 
-# utils klasörüne erişim sağlamak için
+# utils klasörüne erişim sağlamak için (ÖNCE YOLU TANITIYORUZ)
 sys.path.append(BASE_DIR)
 
+# ŞİMDİ UTILS İÇİNDEKİLERİ İMPORT EDEBİLİRİZ:
 from utils.read_sp3 import read_sp3
 from utils.read_nav import read_nav_kepler
 from utils.ecef_to_geodetic import ecef_to_geodetic
-# Önceki adımlarda yazdığımız Live Tracking özelliklerini entegre ediyoruz
-from utils.velocity import calculate_orbital_velocity
 from utils.topocentric import ecef_to_topocentric
+from utils.state_to_kepler import calculate_kepler_from_state
+from utils.compare_kepler import analyze_kepler_errors # <--- DOĞRU YERİ BURASI
 
-app = FastAPI(title="OrbitalViz API | GNSS Ground Track Visualization")
+app = FastAPI(title="OrbitalViz API | Multi-GNSS Ground Track Visualization")
 
-# Güvenlik ve Arayüzle Haberleşme İzni (CORS)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -30,33 +31,25 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Static klasörü yoksa otomatik oluşturur (hata almamak için)
 if not os.path.exists(STATIC_DIR):
     os.makedirs(STATIC_DIR)
-    print(f"⚠️ Uyarı: '{STATIC_DIR}' klasörü yoktu, otomatik oluşturuldu. index.html'i içine koyun.")
+    print(f"⚠️ Uyarı: '{STATIC_DIR}' klasörü yoktu, otomatik oluşturuldu.")
 
-# Arayüz dosyalarını sunma (Static Files serving)
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
-# Bellek önbelleği (Hızlı yanıt için)
 SP3_DATA = []
 KEPLER_DATA = {}
-
-# Varsayılan Gözlem İstasyonu (Örn: Hacettepe Üniversitesi, Ankara)
-# Toposentrik (Az/El) hesaplama bu noktaya göre yapılır
 STATION = {
     "lat": 39.866,
     "lon": 32.736,
-    "h": 100.0  # Elipsoid yüksekliği (m)
+    "h": 100.0  
 }
 
 @app.on_event("startup")
 def load_data():
-    """Sunucu başlarken verileri sadece bir kere belleğe yükler."""
     global SP3_DATA, KEPLER_DATA
     print("⏳ API Startup: Loading SP3 and Broadcast Verileri...")
     
-    # Ana dizindeki 'data' klasörüne tam isabetle yönlendirme
     root_dir = os.path.dirname(BASE_DIR)
     sp3_path = os.path.join(root_dir, "data", "COD0MGXFIN_20240600000_01D_05M_ORB.SP3")
     nav_path = os.path.join(root_dir, "data", "BRDC00IGS_R_20240600000_01D_MN.rnx")
@@ -69,20 +62,14 @@ def load_data():
 
 @app.get("/")
 def serve_home():
-    """Yenilenen profesyonel Web Arayüzünü gösterir."""
     index_path = os.path.join(STATIC_DIR, "index.html")
     if not os.path.exists(index_path):
         return {"hata": "index.html static klasorunde bulunamadi!"}
     return FileResponse(index_path)
 
 @app.get("/api/satellites")
-def get_satellites(sats: str = "G01,G02"):
-    """
-    Arayüzün veri istediği ana endpoint. Hem yörünge yollarını (track)
-    hem de anlık teknik verileri (Hız, Az/El vb.) hesaplayıp gönderir.
-    """
+def get_satellites(sats: str = "G01"):
     selected = [s.strip().upper() for s in sats.split(",")]
-    
     response_data = []
     
     for sat_id in selected:
@@ -96,22 +83,41 @@ def get_satellites(sats: str = "G01,G02"):
             track_points.append({"lat": lat, "lon": lon, "alt": h, "time": c["time"].isoformat()})
             
         kepler = KEPLER_DATA.get(sat_id, {})
-        
-        # --- ANLIK TEKNİK VERİLERİ HESAPLAMA (DASHBOARD İÇİN) ---
         instant_data = None
+        vel_kms = 0.0
+        
+        # --- 3 BOYUTLU VEKTÖR MATEMATİĞİ VE KEPLER ÜRETİMİ ---
+        if len(coords) >= 2:
+            p1 = coords[0]
+            p2 = coords[1]
+            dt = (p2["time"] - p1["time"]).total_seconds()
+            
+            if dt > 0:
+                # DÜZELTME: SP3 verisi KM ise METRE'ye çeviriyoruz (* 1000)
+                # Formüllerin çökmemesi için bu şart!
+                rx1, ry1, rz1 = p1["x"] * 1000, p1["y"] * 1000, p1["z"] * 1000
+                rx2, ry2, rz2 = p2["x"] * 1000, p2["y"] * 1000, p2["z"] * 1000
+                
+                vx = (rx2 - rx1) / dt # m/s
+                vy = (ry2 - ry1) / dt # m/s
+                vz = (rz2 - rz1) / dt # m/s
+                
+                # Arayüz için km/s'ye geri çevir
+                vel_kms = math.sqrt(vx**2 + vy**2 + vz**2) / 1000.0
+                
+                if not kepler:
+                    r_vec = [rx1, ry1, rz1]
+                    v_vec = [vx, vy, vz]
+                    try:
+                        # GLONASS ve Galileo için Kepler parametrelerini kitaptaki fonksiyonla üret
+                        kepler = calculate_kepler_from_state(r_vec, v_vec)
+                    except Exception as e:
+                        print(f"Kepler hesaplama hatası ({sat_id}): {e}")
+        
         if coords:
-            # Uydunun o anki (ilk epoch) konumunu baz alıyoruz
-            current_epoch = coords[0] 
-            
-            # 1. Uzay Hızı Hesaplama (km/s) (Vis-viva ile)
-            vel_kms = 0.0
-            if kepler:
-                a_meters = kepler["A (Yarı Büyük Eksen) [m]"]
-                vel_kms = calculate_orbital_velocity(current_epoch["x"], current_epoch["y"], current_epoch["z"], a_meters)
-            
-            # 2. Toposentrik Dönüşüm (Azimut, Elevasyon)
+            c0 = coords[0]
             az, el, dist = ecef_to_topocentric(
-                current_epoch["x"], current_epoch["y"], current_epoch["z"], 
+                c0["x"], c0["y"], c0["z"], 
                 STATION["lat"], STATION["lon"], STATION["h"]
             )
             
@@ -128,7 +134,32 @@ def get_satellites(sats: str = "G01,G02"):
             "id": sat_id,
             "track": track_points,
             "kepler": kepler,
-            "instant_data": instant_data # Dinamik yörünge verileri
+            "instant_data": instant_data
         })
         
     return {"status": "success", "data": response_data}
+
+# Yeni yazdığımız analiz modülünü en üste import etmeyi unutma:
+# from utils.compare_kepler import analyze_kepler_errors
+
+@app.get("/api/analysis")
+def get_kepler_analysis(sat: str = "G01"):
+    """
+    SP3 ve Broadcast verilerini karşılaştırarak,
+    arayüzdeki hata grafikleri (Error Charts) için zaman serisi datası yollar.
+    """
+    sat_id = sat.strip().upper()
+    
+    # İlgili uydunun SP3 noktalarını filtrele
+    coords = [entry for entry in SP3_DATA if entry["id"] == sat_id]
+    
+    # Uydunun RINEX (Broadcast) Kepler verisini al
+    brdc_kepler = KEPLER_DATA.get(sat_id, {})
+    
+    if not coords or not brdc_kepler:
+        return {"status": "error", "message": f"{sat_id} için yeterli SP3 veya Broadcast verisi bulunamadı. Lütfen bir GPS uydusu seçin."}
+    
+    # Fonksiyonumuzu çağırıp Günlük Hata Serisini üretiyoruz
+    error_series = analyze_kepler_errors(coords, brdc_kepler)
+    
+    return {"status": "success", "sat_id": sat_id, "analysis": error_series}
