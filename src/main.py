@@ -3,11 +3,9 @@ warnings.filterwarnings("ignore", category=RuntimeWarning)
 
 import os
 import sys
-import warnings
 from datetime import timedelta
 
 # Gereksiz kütüphane uyarılarını gizler
-warnings.filterwarnings("ignore", category=RuntimeWarning)
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from utils.read_sp3 import read_sp3
@@ -15,7 +13,6 @@ from utils.ecef_to_geodetic import ecef_to_geodetic
 from utils.interpolation import lagrange_interpolate
 from utils.topocentric import ecef_to_topocentric
 from utils.read_nav import read_nav_kepler
-from utils.velocity import calculate_orbital_velocity
 from utils.velocity import calculate_orbital_velocity, calculate_sp3_velocity_from_positions
 from utils.rtn_transform import ecef_to_rtn_error
 from utils.satpos_utils import calculate_satpos_from_kepler
@@ -78,13 +75,13 @@ def main():
     print("🛰️ SEÇİLEN UYDULARIN KEPLER (YÖRÜNGE) PARAMETRELERİ (BRDC)")
     print("="*70)
     for sat in selected_sats:
-        if sat in kepler_veri:
-            k = kepler_veri[sat]
+        if sat in kepler_veri and len(kepler_veri[sat]) > 0:
+            k = kepler_veri[sat][0]  # DÜZELTME BURADA: Listenin ilk elemanını (sözlüğü) seçiyoruz
             print(f"Uydu: {sat}")
             print(f"  ➜ Dışmerkezlik (e)       : {k['e (Dışmerkezlik)']:.6f} (Tam daireye ne kadar yakın?)")
             print(f"  ➜ Yörünge Eğikliği (i0)  : {k['i0 (Yörünge Eğikliği)']:.6f} radyan")
             print(f"  ➜ Yarı Büyük Eksen (A)   : {k['A (Yarı Büyük Eksen) [m]']:,.2f} metre")
-            print(f"  ➜ Yerberi Argümanı (w)   : {k['omega (Yerberi Argümanı)']:.6f} radyan")
+            print(f"  ➜ Yerberi Argümanı (w)   : {k['omega']:.6f} radyan") # KeyError DÜZELTİLDİ
             print("-" * 40)
         else:
             print(f"⚠️ {sat} uydusuna ait Kepler parametresi NAV dosyasında bulunamadı.")
@@ -125,8 +122,8 @@ def main():
             
             # BROADCAST ECEF KOORDİNATLARINI HESAPLA (YENİ FONKSİYON İLE)
             pos_brdc = [0.0, 0.0, 0.0]
-            if sat_id in kepler_veri:
-                pos_brdc = calculate_satpos_from_kepler(kepler_veri[sat_id], dt_seconds)
+            if sat_id in kepler_veri and len(kepler_veri[sat_id]) > 0: # TypeError DÜZELTİLDİ
+                pos_brdc = calculate_satpos_from_kepler(kepler_veri[sat_id][0], dt_seconds)
             
             # Eğer Broadcast verisi yoksa veya [0,0,0] döndüyse atla
             if pos_brdc == [0.0, 0.0, 0.0]:
@@ -196,8 +193,8 @@ def main():
             
             # 2. Vis-Viva Denklemi ile Hız Hesaplaması (YENİ EKLENEN KISIM)
             vel_kms = 0.0
-            if sat_id in kepler_veri:
-                a_meters = kepler_veri[sat_id]["A (Yarı Büyük Eksen) [m]"]
+            if sat_id in kepler_veri and len(kepler_veri[sat_id]) > 0: # TypeError DÜZELTİLDİ
+                a_meters = kepler_veri[sat_id][0]["A (Yarı Büyük Eksen) [m]"]
                 vel_kms = calculate_orbital_velocity(first_epoch["x"], first_epoch["y"], first_epoch["z"], a_meters)
             
             # Tüm veriyi paketleyip grafik arayüzüne (Frontend) gönderiyoruz

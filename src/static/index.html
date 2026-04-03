@@ -14,7 +14,7 @@
         body { margin: 0; padding: 0; background-color: #000; color: #fff; font-family: 'Inter', sans-serif; overflow: hidden; }
         #cesiumContainer { width: 100vw; height: 100vh; position: absolute; top: 0; left: 0; z-index: 1; }
         
-        /* SOL PANEL - İlk tasarımdaki gibi daha kompakt ve sade */
+        /* SOL PANEL */
         #panel-wrapper { position: absolute; top: 20px; left: 20px; z-index: 10; display: flex; align-items: flex-start; gap: 10px; transition: transform 0.4s ease; }
         #panel-wrapper.collapsed { transform: translateX(-400px); }
 
@@ -27,17 +27,13 @@
         }
 
         .toggle-btn { background: rgba(13, 17, 28, 0.9); border: 1px solid rgba(255,255,255,0.1); color: #fff; padding: 10px 8px; border-radius: 8px; cursor: pointer; margin-top: 10px; }
-
-        /* Reset View (Artık sağ altta, daha derli toplu) */
         .reset-cam-btn { position: absolute; bottom: 20px; right: 20px; z-index: 10; background: rgba(13, 17, 28, 0.8); border: 1px solid rgba(255,255,255,0.2); color: white; padding: 8px 12px; border-radius: 8px; cursor: pointer; transition: 0.2s; font-size: 0.85rem;}
         .reset-cam-btn:hover { background: #38bdf8; color: #000; }
 
-        /* Başlık ve Dil */
         .header-row { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 12px; margin-bottom: 15px; }
         h2 { margin: 0; font-size: 1.2rem; color: #38bdf8; font-weight: 800; }
         .lang-btn { background: transparent; border: 1px solid rgba(255,255,255,0.3); padding: 4px 8px; border-radius: 6px; font-size: 0.75rem; color: #cbd5e1; cursor: pointer;}
         
-        /* Sekmeler ve Matris */
         .tabs { display: flex; gap: 5px; margin-bottom: 15px; }
         .tab-btn { flex: 1; background: rgba(255,255,255,0.05); border: 1px solid transparent; color: #94a3b8; padding: 6px 0; font-size: 0.75rem; font-weight: 600; cursor: pointer; border-radius: 6px; }
         .tab-btn.active { background: rgba(56, 189, 248, 0.15); color: #38bdf8; border-color: rgba(56, 189, 248, 0.3); }
@@ -48,16 +44,18 @@
         .sat-btn.active.R { background: #ef4444; color: #fff; border-color: #f87171; }
         .sat-btn.active.E { background: #eab308; color: #fff; border-color: #facc15; }
         
-        .main-btn { width: 100%; background: #0ea5e9; border: none; color: white; padding: 10px; border-radius: 8px; cursor: pointer; font-weight: 800; font-size: 0.9rem; margin-bottom: 10px;}
+        .main-btn { width: 100%; background: #0ea5e9; border: none; color: white; padding: 10px; border-radius: 8px; cursor: pointer; font-weight: 800; font-size: 0.9rem; margin-bottom: 5px;}
         .main-btn:hover { background: #0284c7; }
+        
+        .btn-skyplot-main { width: 100%; background: #f59e0b; border: none; color: #000; padding: 10px; border-radius: 8px; cursor: pointer; font-weight: 800; font-size: 0.9rem; margin-bottom: 10px;}
+        .btn-skyplot-main:hover { background: #d97706; color: #fff; }
 
         .data-container { flex: 1; overflow-y: auto; padding-right: 5px; }
         .data-container::-webkit-scrollbar { width: 4px; }
         .data-container::-webkit-scrollbar-thumb { background: #38bdf8; border-radius: 10px; }
         
-        /* UYDU KARTLARI (İLK TASARIMA GERİ DÖNÜŞ) */
         .sat-card { background: rgba(0,0,0,0.3); border-top: 1px solid rgba(255,255,255,0.05); border-right: 1px solid rgba(255,255,255,0.05); border-bottom: 1px solid rgba(255,255,255,0.05); padding: 15px; margin-bottom: 12px; border-radius: 0 8px 8px 0; position: relative;}
-        .sat-card.G { border-left: 3px solid #facc15; } /* İlk tasarımdaki sarı çizgi */
+        .sat-card.G { border-left: 3px solid #facc15; }
         .sat-card.R { border-left: 3px solid #ef4444; }
         .sat-card.E { border-left: 3px solid #38bdf8; }
 
@@ -71,7 +69,6 @@
         .action-icon-btn:hover { background: rgba(255,255,255,0.2); }
         .btn-analysis { background: rgba(245, 158, 11, 0.2); color: #fcd34d; }
 
-        /* İlk tasarımdaki gibi alt alta liste görünümü */
         .data-list { font-size: 0.8rem; color: #cbd5e1; line-height: 1.6; }
         .data-list b { color: #fff; font-weight: 600; }
 
@@ -80,12 +77,17 @@
         #analysis-panel.open { transform: translateY(0); }
         .ap-header { display: flex; justify-content: space-between; align-items: center; padding: 10px 25px; background: rgba(255,255,255,0.05); border-bottom: 1px solid rgba(255,255,255,0.1); }
         .ap-title { font-size: 1rem; color: #38bdf8; font-weight: bold; }
-        .close-ap-btn { background: transparent; border: none; color: #ef4444; font-size: 1.2rem; cursor: pointer; font-weight: bold; }
+        .close-btn { background: transparent; border: none; color: #ef4444; font-size: 1.2rem; cursor: pointer; font-weight: bold; }
         .charts-container { flex: 1; display: flex; gap: 20px; padding: 15px 25px; overflow-x: auto; }
         .chart-box { flex: 1; min-width: 300px; background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.05); border-radius: 10px; padding: 10px; position: relative; }
         
-        /* Loading overlay artık sadece veriler API'den çekilirken görünecek */
         .loading-overlay { position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.7); display: flex; justify-content: center; align-items: center; color: #38bdf8; font-weight: bold; border-radius: 10px; z-index: 5; display: none;}
+
+        /* SKYPLOT PANELİ */
+        #skyplot-panel { position: absolute; top: 20px; right: 20px; z-index: 10; background: rgba(13, 17, 28, 0.95); backdrop-filter: blur(15px); -webkit-backdrop-filter: blur(15px); border: 1px solid rgba(56, 189, 248, 0.3); border-radius: 12px; padding: 15px; width: 350px; display: none; flex-direction: column; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.8); }
+        .sp-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 10px; margin-bottom: 15px; }
+        .sp-title { font-size: 1.1rem; color: #f59e0b; font-weight: 800; }
+        #skyplot-canvas-container { position: relative; width: 100%; height: 320px; }
 
         .cesium-viewer-bottom { display: none !important; }
     </style>
@@ -93,7 +95,7 @@
 <body>
 
     <div id="cesiumContainer"></div>
-    <button class="reset-cam-btn" onclick="resetCamera()">🌍 Reset View</button>
+    <button class="reset-cam-btn" id="ui-reset-btn" onclick="resetCamera()">🌍 Reset View</button>
 
     <div id="panel-wrapper">
         <div id="panel">
@@ -111,6 +113,7 @@
             <div class="sat-grid" id="sat-grid"></div>
 
             <button onclick="loadSatellites()" class="main-btn" id="ui-load-btn">Load Constellation</button>
+            <button onclick="toggleSkyplot()" class="btn-skyplot-main" id="ui-skyplot-btn">🔭 Skyplot</button>
             
             <div id="info" class="data-container">
                 <div style="font-size: 0.85rem; color: #cbd5e1; text-align: center; margin-top: 10px;" id="ui-waiting">Select satellites.</div>
@@ -119,22 +122,47 @@
         <button class="toggle-btn" onclick="togglePanel()" id="toggle-btn">◄</button>
     </div>
 
+    <div id="skyplot-panel">
+        <div class="sp-header">
+            <div class="sp-title" id="ui-sp-title">🔭 Skyplot Visibility Map</div>
+            <button class="close-btn" onclick="toggleSkyplot()">✖</button>
+        </div>
+        <div id="skyplot-canvas-container">
+            <canvas id="skyplotChart"></canvas>
+        </div>
+    </div>
+
     <div id="analysis-panel">
         <div class="ap-header">
-            <div class="ap-title">📊 Yörünge Hata Analizi (RTN Sistemi) | <span id="ap-sat-id" style="color:#fff;">G01</span></div>
-            <button class="close-ap-btn" onclick="closeAnalysisPanel()">✖</button>
+            <div class="ap-title" id="ui-ap-title">📊 Orbit Error Analysis (RTN System) | <span id="ap-sat-id" style="color:#fff;">G01</span></div>
+            <button class="close-btn" onclick="closeAnalysisPanel()">✖</button>
         </div>
         <div class="charts-container">
-            <div class="chart-box"><div class="loading-overlay" id="loadingX">Veriler Çekiliyor...</div><canvas id="chartX"></canvas></div>
-            <div class="chart-box"><div class="loading-overlay" id="loadingY">Veriler Çekiliyor...</div><canvas id="chartY"></canvas></div>
-            <div class="chart-box"><div class="loading-overlay" id="loadingZ">Veriler Çekiliyor...</div><canvas id="chartZ"></canvas></div>
+            <div class="chart-box"><div class="loading-overlay" id="loadingX">Loading...</div><canvas id="chartX"></canvas></div>
+            <div class="chart-box"><div class="loading-overlay" id="loadingY">Loading...</div><canvas id="chartY"></canvas></div>
+            <div class="chart-box"><div class="loading-overlay" id="loadingZ">Loading...</div><canvas id="chartZ"></canvas></div>
         </div>
     </div>
 
     <script>
+        // KAPSAMLI SÖZLÜK (BILINGUAL SUPPORT)
         const i18n = {
-            en: { title: "Satellite Tracking", btnLoad: "Load", waiting: "Select satellites.", loading: "Loading...", na: "N/A", focus: "🎯", track: "👁️", btnAnlz: "📊 Analyze" },
-            tr: { title: "Uydu Takip Sistemi", btnLoad: "Yükle", waiting: "Uydu seçin.", loading: "Yükleniyor...", na: "-", focus: "🎯", track: "👁️", btnAnlz: "📊 Analiz" }
+            en: { 
+                title: "🛰️ GNSS Center", btnLoad: "Load Constellation", waiting: "Select satellites.", loading: "Loading...", na: "N/A", 
+                focus: "🎯 Focus", btnAnlz: "📊 Analyze", resetCam: "🌍 Reset View",
+                skyplotBtn: "🔭 Skyplot (Visibility Map)", skyplotTitle: "🔭 Skyplot Visibility Map",
+                analysisTitle: "📊 Orbit Error Analysis (RTN System)",
+                lblA: "Semi-Major Axis (A):", lblE: "Eccentricity (e):", lblI: "Inclination (i0):", lblV: "Velocity:", lblAlt: "Altitude:",
+                cRadial: "Radial Error [Meters]", cAlong: "Along-track Error [Meters]", cCross: "Cross-track Error [Meters]"
+            },
+            tr: { 
+                title: "🛰️ GNSS Merkezi", btnLoad: "Takımyıldızı Yükle", waiting: "Uydu seçin.", loading: "Yükleniyor...", na: "Bilinmiyor", 
+                focus: "🎯 Odaklan", btnAnlz: "📊 Analiz", resetCam: "🌍 Görünümü Sıfırla",
+                skyplotBtn: "🔭 Skyplot (Gökyüzü Haritası)", skyplotTitle: "🔭 Skyplot Görünürlük Haritası",
+                analysisTitle: "📊 Yörünge Hata Analizi (RTN Sistemi)",
+                lblA: "Yarı Büyük Eksen (A):", lblE: "Dışmerkezlik (e):", lblI: "Yörünge Eğikliği (i0):", lblV: "Hız:", lblAlt: "Yükseklik:",
+                cRadial: "Radial (Radyal) Hatası [Metre]", cAlong: "Along-track (Transvers) Hatası [Metre]", cCross: "Cross-track (Normal) Hatası [Metre]"
+            }
         };
 
         let currentLang = 'en'; 
@@ -142,15 +170,33 @@
         let currentConstellation = 'G'; 
         let satelliteEntities = {}; 
         let isPanelOpen = true;
+        let latestSatData = []; // API'den gelen canlı uydu listesi
+        let currentAnalysisData = null; // Aktif analizin verisi
 
-        let myChartA = null; let myChartE = null; let myChartI = null;
+        let myChartA = null; let myChartE = null; let myChartI = null; let skyplotChart = null;
         const constConfig = { 'G': 32, 'R': 24, 'E': 36 };
 
         function updateUI() {
             const lang = i18n[currentLang];
             document.getElementById('ui-title').innerText = lang.title;
             document.getElementById('ui-load-btn').innerText = lang.btnLoad;
+            document.getElementById('ui-skyplot-btn').innerText = lang.skyplotBtn;
+            document.getElementById('ui-sp-title').innerText = lang.skyplotTitle;
+            document.getElementById('ui-reset-btn').innerText = lang.resetCam;
+            
+            const waitingEl = document.getElementById('ui-waiting');
+            if(waitingEl) waitingEl.innerText = lang.waiting;
+
+            // Analysis Title Güncellemesi
+            const apSatId = document.getElementById('ap-sat-id').innerText;
+            document.getElementById('ui-ap-title').innerHTML = `${lang.analysisTitle} | <span id="ap-sat-id" style="color:#fff;">${apSatId}</span>`;
+
             document.querySelectorAll('.btn-analysis').forEach(b => b.innerText = lang.btnAnlz);
+            document.querySelectorAll('.btn-focus').forEach(b => b.innerText = lang.focus);
+            
+            // Mevcut veriler varsa kartları ve grafikleri çevir
+            if (latestSatData.length > 0) loadSatellites(true); // Parametre true ise sadece listeyi yeniden render eder
+            if (currentAnalysisData) renderCharts(currentAnalysisData); // Açık olan grafiğin başlıklarını çevirir
         }
 
         function toggleLanguage() { currentLang = currentLang === 'en' ? 'tr' : 'en'; updateUI(); }
@@ -186,102 +232,166 @@
             }
         }
 
+        // --- CESIUM KURULUMU ---
         const viewer = new Cesium.Viewer('cesiumContainer', {
             baseLayerPicker: false, geocoder: false, animation: false, timeline: false, infoBox: false, navigationHelpButton: false, sceneModePicker: true, 
             imageryProvider: new Cesium.TileMapServiceImageryProvider({ url: Cesium.buildModuleUrl('Assets/Textures/NaturalEarthII') })
         });
         viewer.imageryLayers.addImageryProvider(new Cesium.UrlTemplateImageryProvider({ url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}' }));
-        
         viewer.scene.globe.enableLighting = false; 
 
         function resetCamera() { viewer.camera.flyHome(1.5); }
         function focusSatellite(satId) { if(satelliteEntities[satId] && satelliteEntities[satId].point) viewer.flyTo(satelliteEntities[satId].point, { duration: 1.5, offset: new Cesium.HeadingPitchRange(0, -Cesium.Math.PI_OVER_FOUR, 15000000) }); }
 
-        function closeAnalysisPanel() { document.getElementById('analysis-panel').classList.remove('open'); }
+        // --- SKYPLOT ---
+        function toggleSkyplot() {
+            const panel = document.getElementById('skyplot-panel');
+            if (panel.style.display === 'flex') { panel.style.display = 'none'; } 
+            else { panel.style.display = 'flex'; drawSkyplot(); }
+        }
+
+        function drawSkyplot() {
+            if (skyplotChart) skyplotChart.destroy();
+            const visibleSats = latestSatData.filter(sat => sat.instant_data && sat.instant_data.topocentric.elevation > 0);
+            
+            const datasets = visibleSats.map(sat => {
+                const az = sat.instant_data.topocentric.azimuth;
+                const el = sat.instant_data.topocentric.elevation;
+                const r = 90 - el; 
+                const azRad = az * (Math.PI / 180); 
+                
+                const x = r * Math.sin(azRad);
+                const y = r * Math.cos(azRad);
+                
+                let ptColor = '#38bdf8'; 
+                if (sat.id.startsWith('G')) ptColor = '#facc15'; 
+                if (sat.id.startsWith('R')) ptColor = '#ef4444'; 
+
+                return { label: sat.id, data: [{ x: x, y: y }], backgroundColor: ptColor, borderColor: '#fff', borderWidth: 1, pointRadius: 6, pointHoverRadius: 9 };
+            });
+
+            const ctx = document.getElementById('skyplotChart').getContext('2d');
+            skyplotChart = new Chart(ctx, {
+                type: 'scatter',
+                data: { datasets: datasets },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: { callbacks: { label: function(context) {
+                            const satId = context.dataset.label;
+                            const rawSat = visibleSats.find(s => s.id === satId);
+                            return `${satId} | Az: ${rawSat.instant_data.topocentric.azimuth.toFixed(1)}°, El: ${rawSat.instant_data.topocentric.elevation.toFixed(1)}°`;
+                        }}}
+                    },
+                    scales: { x: { min: -90, max: 90, display: false }, y: { min: -90, max: 90, display: false } },
+                    animation: { duration: 800, easing: 'easeOutQuart' }
+                },
+                plugins: [{
+                    id: 'skyplotBackground',
+                    beforeDraw: (chart) => {
+                        const { ctx, chartArea: { top, bottom, left, right, width, height } } = chart;
+                        const centerX = left + width / 2; const centerY = top + height / 2; const maxR = Math.min(width, height) / 2;
+                        
+                        ctx.save(); ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)'; ctx.lineWidth = 1; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.font = 'bold 12px Inter'; ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+
+                        [1, 0.66, 0.33].forEach(scale => { ctx.beginPath(); ctx.arc(centerX, centerY, maxR * scale, 0, 2 * Math.PI); ctx.stroke(); });
+
+                        ctx.beginPath(); ctx.moveTo(centerX, top); ctx.lineTo(centerX, bottom); ctx.stroke(); 
+                        ctx.beginPath(); ctx.moveTo(left, centerY); ctx.lineTo(right, centerY); ctx.stroke(); 
+                        
+                        ctx.fillText('N', centerX, top + 10); ctx.fillText('S', centerX, bottom - 10); ctx.fillText('E', right - 10, centerY); ctx.fillText('W', left + 10, centerY);
+                        ctx.restore();
+                    }
+                }]
+            });
+        }
+
+        // --- HATA ANALİZİ ---
+        function closeAnalysisPanel() { document.getElementById('analysis-panel').classList.remove('open'); currentAnalysisData = null; }
 
         async function openAnalysis(satId) {
-            if (!satId.startsWith('G')) { alert("Sadece GPS uydularının Yayınlanmış Kepler verisi kıyaslanabilir."); return; }
+            const lang = i18n[currentLang];
+            if (!satId.startsWith('G')) { alert(currentLang === 'en' ? "Only GPS broadcasts can be analyzed." : "Sadece GPS verileri kıyaslanabilir."); return; }
             document.getElementById('ap-sat-id').innerText = satId;
             document.getElementById('analysis-panel').classList.add('open');
-            document.querySelectorAll('.loading-overlay').forEach(el => el.style.display = 'flex');
+            document.querySelectorAll('.loading-overlay').forEach(el => { el.style.display = 'flex'; el.innerText = lang.loading; });
 
             try {
-                // Backend'den (api.py) yazdığımız hata analizi rotasını çağırıyoruz
                 const response = await fetch(`http://localhost:8000/api/analysis?sat=${satId}`);
                 const data = await response.json();
                 
                 if (data.status === 'error') { alert(data.message); closeAnalysisPanel(); return; }
                 
                 document.querySelectorAll('.loading-overlay').forEach(el => el.style.display = 'none');
-                
-                // Gelen gerçek veriyi grafiklere basıyoruz
-                renderCharts(data.analysis);
+                currentAnalysisData = data.analysis;
+                renderCharts(currentAnalysisData);
             } catch (error) { 
-                alert("API Error: Sunucuya bağlanılamadı. Lütfen api.py'nin çalıştığından emin olun."); 
-                closeAnalysisPanel(); 
+                alert("API Error"); closeAnalysisPanel(); 
             }
         }
 
         function renderCharts(analysisData) {
+            const lang = i18n[currentLang];
             if(myChartA) myChartA.destroy(); if(myChartE) myChartE.destroy(); if(myChartI) myChartI.destroy();
             
-            // Python'dan dönen gerçek zaman ve RTN verileri
             const labels = analysisData.times; 
-            const dataRadial = analysisData.radial;
-            const dataAlong = analysisData.along;
-            const dataCross = analysisData.cross;
-
             Chart.defaults.color = '#94a3b8'; Chart.defaults.font.family = 'Inter';
-            
-            // suggestedMin/Max değerlerini sildim ki grafik gelen veriye göre (oto-scale) esnesin.
-            const commonOptions = { 
-                responsive: true, 
-                maintainAspectRatio: false, 
-                plugins: { legend: { display: false } }, 
-                scales: { y: { grid: { color: 'rgba(255,255,255,0.05)' } } } 
-            };
+            const commonOptions = { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { grid: { color: 'rgba(255,255,255,0.05)' } } } };
 
             myChartA = new Chart(document.getElementById('chartX'), { 
-                type: 'line', 
-                data: { labels: labels, datasets: [{ label: 'Radial (m)', data: dataRadial, borderColor: '#38bdf8', borderWidth: 2 }] }, 
-                options: { ...commonOptions, plugins: { title: { display: true, text: 'Radial (Radyal) Hatası [Metre]' } } } 
+                type: 'line', data: { labels: labels, datasets: [{ label: 'Radial', data: analysisData.radial, borderColor: '#38bdf8', borderWidth: 2 }] }, 
+                options: { ...commonOptions, plugins: { title: { display: true, text: lang.cRadial } } } 
             });
             
             myChartE = new Chart(document.getElementById('chartY'), { 
-                type: 'line', 
-                data: { labels: labels, datasets: [{ label: 'Along-track (m)', data: dataAlong, borderColor: '#facc15', borderWidth: 2 }] }, 
-                options: { ...commonOptions, plugins: { title: { display: true, text: 'Along-track (Transvers) Hatası [Metre]' } } } 
+                type: 'line', data: { labels: labels, datasets: [{ label: 'Along-track', data: analysisData.along, borderColor: '#facc15', borderWidth: 2 }] }, 
+                options: { ...commonOptions, plugins: { title: { display: true, text: lang.cAlong } } } 
             });
             
             myChartI = new Chart(document.getElementById('chartZ'), { 
-                type: 'line', 
-                data: { labels: labels, datasets: [{ label: 'Cross-track (m)', data: dataCross, borderColor: '#ef4444', borderWidth: 2 }] }, 
-                options: { ...commonOptions, plugins: { title: { display: true, text: 'Cross-track (Normal) Hatası [Metre]' } } } 
+                type: 'line', data: { labels: labels, datasets: [{ label: 'Cross-track', data: analysisData.cross, borderColor: '#ef4444', borderWidth: 2 }] }, 
+                options: { ...commonOptions, plugins: { title: { display: true, text: lang.cCross } } } 
             });
         }
 
-        async function loadSatellites() {
+        // --- VERİ ÇEKME ---
+        async function loadSatellites(skipFetch = false) {
             const infoDiv = document.getElementById('info');
             const lang = i18n[currentLang];
             if(selectedSats.size === 0) return;
 
-            infoDiv.innerHTML = `<div style="text-align:center; color:#38bdf8; margin-top:20px;">${lang.loading}</div>`;
-            viewer.entities.removeAll(); 
-            satelliteEntities = {}; 
+            // Eğer dil değiştiği için sadece re-render yapılıyorsa API'yi tekrar yorma
+            if (!skipFetch) {
+                infoDiv.innerHTML = `<div style="text-align:center; color:#38bdf8; margin-top:20px;">${lang.loading}</div>`;
+                viewer.entities.removeAll(); 
+                satelliteEntities = {}; 
 
-            const satQuery = Array.from(selectedSats).join(',');
+                const satQuery = Array.from(selectedSats).join(',');
+                try {
+                    const response = await fetch(`http://localhost:8000/api/satellites?sats=${satQuery}`);
+                    const result = await response.json();
+                    latestSatData = result.data; // Veriyi Skyplot ve re-render için kaydet
+                    
+                    // OTOMATİK SKYPLOT GÜNCELLEMESİ (Hocanın istediği özellik)
+                    const spPanel = document.getElementById('skyplot-panel');
+                    if (spPanel && spPanel.style.display === 'flex') {
+                        drawSkyplot();
+                    }
+                } catch (error) { 
+                    infoDiv.innerHTML = `<div style="color:#ef4444; text-align:center;">API Error</div>`; return; 
+                }
+            }
 
-            try {
-                const response = await fetch(`http://localhost:8000/api/satellites?sats=${satQuery}`);
-                const result = await response.json();
-                infoDiv.innerHTML = ""; 
+            infoDiv.innerHTML = ""; 
+            latestSatData.forEach(sat => {
+                const prefix = sat.id.charAt(0);
+                let trackColor = Cesium.Color.DEEPSKYBLUE; 
+                if(prefix === 'R') trackColor = Cesium.Color.RED; 
+                if(prefix === 'E') trackColor = Cesium.Color.GOLD; 
 
-                result.data.forEach(sat => {
-                    const prefix = sat.id.charAt(0);
-                    let trackColor = Cesium.Color.DEEPSKYBLUE; 
-                    if(prefix === 'R') trackColor = Cesium.Color.RED; 
-                    if(prefix === 'E') trackColor = Cesium.Color.GOLD; 
-
+                // Yeni Cesium Objelerini sadece API'den veri çektiysek oluştur
+                if (!skipFetch) {
                     const positions = sat.track.map(p => Cesium.Cartesian3.fromDegrees(p.lon, p.lat, p.alt));
                     const trackEntity = viewer.entities.add({ polyline: { positions: positions, width: 2, material: new Cesium.PolylineGlowMaterialProperty({ glowPower: 0.1, color: trackColor }) } });
 
@@ -290,42 +400,40 @@
                         const currentPos = sat.track[0];
                         pointEntity = viewer.entities.add({ position: Cesium.Cartesian3.fromDegrees(currentPos.lon, currentPos.lat, currentPos.alt), point: { pixelSize: 10, color: trackColor, outlineColor: Cesium.Color.BLACK, outlineWidth: 1 }, label: { text: sat.id, font: 'bold 10pt Inter', style: Cesium.LabelStyle.FILL_AND_OUTLINE, outlineWidth: 2, verticalOrigin: Cesium.VerticalOrigin.BOTTOM, pixelOffset: new Cesium.Cartesian2(0, -10) } });
                     }
-
                     satelliteEntities[sat.id] = { track: trackEntity, point: pointEntity };
-                    const k = sat.kepler; const r = sat.instant_data; const c = sat.track[0];
+                }
 
-                    if(r && c) {
-                        const a_val = k && k['A (Yarı Büyük Eksen) [m]'] ? ((k['A (Yarı Büyük Eksen) [m]']/1000).toFixed(2)) : lang.na;
-                        const e_val = k && k['e (Dışmerkezlik)'] ? k['e (Dışmerkezlik)'].toFixed(5) : lang.na;
-                        const i_val = k && k['i0 (Yörünge Eğikliği)'] ? k['i0 (Yörünge Eğikliği)'].toFixed(4) + ' rad' : lang.na;
-                        
-                        let analysisBtnHTML = '';
-                        if (prefix === 'G') {
-                            analysisBtnHTML = `<button class="action-icon-btn btn-analysis" onclick="openAnalysis('${sat.id}')">${lang.btnAnlz}</button>`;
-                        }
+                // Dinamik Kart Çizimi (Dil sözlüğüne göre)
+                const k = sat.kepler; const r = sat.instant_data; const c = sat.track[0];
+                if(r && c) {
+                    const a_val = k && k['A (Yarı Büyük Eksen) [m]'] ? ((k['A (Yarı Büyük Eksen) [m]']/1000).toFixed(2)) : lang.na;
+                    const e_val = k && k['e (Dışmerkezlik)'] ? k['e (Dışmerkezlik)'].toFixed(5) : lang.na;
+                    const i_val = k && k['i0 (Yörünge Eğikliği)'] ? k['i0 (Yörünge Eğikliği)'].toFixed(4) + ' rad' : lang.na;
+                    
+                    let analysisBtnHTML = '';
+                    if (prefix === 'G') analysisBtnHTML = `<button class="action-icon-btn btn-analysis" onclick="openAnalysis('${sat.id}')">${lang.btnAnlz}</button>`;
 
-                        infoDiv.innerHTML += `
-                            <div class="sat-card ${prefix}">
-                                <div class="sat-card-header">
-                                    <div class="sat-title">${sat.id}</div>
-                                    <div class="card-actions">
-                                        <button class="action-icon-btn" onclick="focusSatellite('${sat.id}')">${lang.focus}</button>
-                                        ${analysisBtnHTML}
-                                    </div>
-                                </div>
-                                <div class="data-list">
-                                    Semi-Major Axis (A): <b>${a_val} km</b><br>
-                                    Eccentricity (e): <b>${e_val}</b><br>
-                                    Inclination (i0): <b>${i_val}</b><br>
-                                    Velocity: <b>${r.velocity_kms.toFixed(2)} km/s</b><br>
-                                    Altitude: <b>${(c.alt/1000).toFixed(0)} km</b>
+                    infoDiv.innerHTML += `
+                        <div class="sat-card ${prefix}">
+                            <div class="sat-card-header">
+                                <div class="sat-title">${sat.id}</div>
+                                <div class="card-actions">
+                                    <button class="action-icon-btn btn-focus" onclick="focusSatellite('${sat.id}')">${lang.focus}</button>
+                                    ${analysisBtnHTML}
                                 </div>
                             </div>
-                        `;
-                    }
-                });
-                viewer.zoomTo(viewer.entities);
-            } catch (error) { infoDiv.innerHTML = `<div style="color:#ef4444; text-align:center;">${lang.error}</div>`; }
+                            <div class="data-list">
+                                ${lang.lblA} <b>${a_val} km</b><br>
+                                ${lang.lblE} <b>${e_val}</b><br>
+                                ${lang.lblI} <b>${i_val}</b><br>
+                                ${lang.lblV} <b>${r.velocity_kms.toFixed(2)} km/s</b><br>
+                                ${lang.lblAlt} <b>${(c.alt/1000).toFixed(0)} km</b>
+                            </div>
+                        </div>
+                    `;
+                }
+            });
+            if (!skipFetch) viewer.zoomTo(viewer.entities);
         }
 
         buildGrid();

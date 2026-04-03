@@ -19,9 +19,42 @@ from utils.state_to_kepler import calculate_kepler_from_state
 from utils.velocity import calculate_sp3_velocity_from_positions
 from utils.rtn_transform import ecef_to_rtn_error
 from utils.satpos_utils import calculate_satpos_from_kepler
+from utils.apc_utils import read_antex_gps, datetime_to_mjd, calc_sunpos, calc_satapc
 
-app = FastAPI(title="OrbitalViz API")
+from contextlib import asynccontextmanager
+import uvicorn # En alta uvicorn ile çalıştırma kodu ekleyeceğiz
 
+# --- GLOBAL DEĞİŞKENLER ---
+SP3_DATA = []
+KEPLER_DATA = {}
+ANTEX_DATA = {}
+STATION = {"lat": 39.866, "lon": 32.736, "h": 100.0}
+
+# --- YENİ MODERN VERİ YÜKLEME YAPISI (LIFESPAN) ---
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    global SP3_DATA, KEPLER_DATA, ANTEX_DATA
+    print("⏳ API Startup: Loading SP3, Broadcast ve ANTEX Verileri...")
+    
+    root_dir = os.path.dirname(BASE_DIR)
+    sp3_path = os.path.join(root_dir, "data", "COD0MGXFIN_20240600000_01D_05M_ORB.SP3")
+    nav_path = os.path.join(root_dir, "data", "BRDC00IGS_R_20240600000_01D_MN.rnx")
+    atx_path = os.path.join(root_dir, "brdc and sp3 pos and clck", "igs20.atx") 
+    
+    if os.path.exists(sp3_path):
+        SP3_DATA = read_sp3(sp3_path)
+    if os.path.exists(nav_path):
+        KEPLER_DATA = read_nav_kepler(nav_path)
+    if os.path.exists(atx_path):
+        ANTEX_DATA = read_antex_gps(atx_path) 
+        
+    print("✅ Veriler API'ye başarıyla yüklendi!")
+    yield # API burada çalışmaya başlar
+
+# FastAPI Uygulamasını yeni lifespan yapısıyla başlatıyoruz
+app = FastAPI(title="OrbitalViz API", lifespan=lifespan)
+
+# --- AYARLAR ---
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -35,24 +68,27 @@ if not os.path.exists(STATIC_DIR):
 
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
-SP3_DATA = []
-KEPLER_DATA = {}
-STATION = {"lat": 39.866, "lon": 32.736, "h": 100.0}
+# (Buradan aşağısı app.get("/") ve get_kepler_analysis kodlarınla aynı şekilde devam ediyor...)
 
-@app.on_event("startup")
 def load_data():
-    global SP3_DATA, KEPLER_DATA
-    print("⏳ API Startup: Loading SP3 and Broadcast Verileri...")
+    global SP3_DATA, KEPLER_DATA, ANTEX_DATA
+    print("⏳ API Startup: Loading SP3, Broadcast ve ANTEX Verileri...")
     
     root_dir = os.path.dirname(BASE_DIR)
     sp3_path = os.path.join(root_dir, "data", "COD0MGXFIN_20240600000_01D_05M_ORB.SP3")
     nav_path = os.path.join(root_dir, "data", "BRDC00IGS_R_20240600000_01D_MN.rnx")
     
+    # YENİ: Hocanın gönderdiği igs20.atx dosyasının yolu
+    atx_path = os.path.join(root_dir, "brdc and sp3 pos and clck", "igs20.atx") 
+    
     if os.path.exists(sp3_path):
         SP3_DATA = read_sp3(sp3_path)
     if os.path.exists(nav_path):
         KEPLER_DATA = read_nav_kepler(nav_path)
-    print("✅ Veriler API'ye yüklendi!")
+    if os.path.exists(atx_path):
+        ANTEX_DATA = read_antex_gps(atx_path) # ANTEX okuyucuyu çalıştır
+        
+    print("✅ Veriler API'ye başarıyla yüklendi!")
 
 @app.get("/")
 def serve_home():
@@ -113,6 +149,7 @@ def get_tk(t_epoch, toe):
     return tk
 
 @app.get("/api/analysis")
+@app.get("/api/analysis")
 def get_kepler_analysis(sat: str = "G01"):
     sat_id = sat.strip().upper()
     coords = [entry for entry in SP3_DATA if entry["id"] == sat_id]
@@ -128,8 +165,25 @@ def get_kepler_analysis(sat: str = "G01"):
     for i in range(len(coords)):
         t_epoch = coords[i]['time']
         
-        pos_ref = [coords[i]['x'] * 1000.0, coords[i]['y'] * 1000.0, coords[i]['z'] * 1000.0]
+        # 1. SP3'ten gelen KÜTLE MERKEZİ (CoM) ECEF konumu ve Hızı
+        pos_com = [coords[i]['x'] * 1000.0, coords[i]['y'] * 1000.0, coords[i]['z'] * 1000.0]
         vel_ref = [sp3_velocities[i]['vx'], sp3_velocities[i]['vy'], sp3_velocities[i]['vz']]
+        
+        # 2. ANTEN FAZ MERKEZİ (APC) DÜZELTMESİ
+        prn_num = int(sat_id.replace("G", ""))
+        pos_ref = pos_com 
+        
+        if ANTEX_DATA and prn_num in ANTEX_DATA:
+            mjd = datetime_to_mjd(t_epoch)
+            sunpos = calc_sunpos(mjd)
+            neu_l1 = ANTEX_DATA[prn_num].get('L1')
+            neu_l2 = ANTEX_DATA[prn_num].get('L2')
+            
+            if neu_l1 and neu_l2:
+                sapc_offset = calc_satapc(pos_com, sunpos, neu_l1, neu_l2)
+                pos_ref = [pos_com[0] + sapc_offset[0], 
+                           pos_com[1] + sapc_offset[1], 
+                           pos_com[2] + sapc_offset[2]]
         
         # O anki SP3 saatine EN YAKIN (Geçerli) yörünge parametresini bul
         best_eph = None
@@ -157,3 +211,7 @@ def get_kepler_analysis(sat: str = "G01"):
     return {"status": "success", "sat_id": sat_id, "analysis": {
         "times": times_str, "radial": radial_err, "along": along_err, "cross": cross_err
     }}
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run("api:app", host="127.0.0.1", port=8000, reload=True)
