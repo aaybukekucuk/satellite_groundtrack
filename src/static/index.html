@@ -331,6 +331,9 @@
         .skyplot-section { flex: 1; background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; padding: 15px; display: flex; flex-direction: column;}
         .skyplot-canvas-wrapper { flex: 1; position: relative; width: 100%; display: flex; justify-content: center; align-items: center;}
         .loading-overlay { position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(15, 23, 42, 0.8); display: flex; justify-content: center; align-items: center; color: #38bdf8; font-family: 'Rajdhani', sans-serif; font-size: 1.2rem; font-weight: bold; border-radius: 8px; z-index: 5; display: none;}
+        .mode-toggle-btn { background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.15); color: #64748b; padding: 5px 16px; border-radius: 5px; font-family: 'Rajdhani', sans-serif; font-weight: 600; font-size: 0.9rem; cursor: pointer; letter-spacing: 1px; transition: 0.2s; }
+        .mode-toggle-btn:hover { background: rgba(255,255,255,0.1); color: #e2e8f0; }
+        .mode-toggle-btn.active-mode { background: rgba(56,189,248,0.15); border-color: rgba(56,189,248,0.5); color: #38bdf8; }
     </style>
 </head>
 <body>
@@ -427,13 +430,30 @@
         </div>
         <div class="bottom-row" id="analysis-anchor">
             <div class="analysis-section">
-                <h3 class="panel-title" id="ui-ap-title">Orbit Error Analysis (RTN System) <span id="ap-sat-id" style="color:#38bdf8;">| Standby</span></h3>
+                <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:10px; margin-bottom:15px;">
+                    <h3 class="panel-title" id="ui-ap-title" style="border:none; padding:0; margin:0;">
+                        Orbit Error Analysis <span id="ap-sat-id" style="color:#38bdf8;">| Standby</span>
+                    </h3>
+                    <div style="display:flex; gap:6px;">
+                        <button id="mode-rtn-btn" class="mode-toggle-btn active-mode" onclick="switchAnalysisMode('rtn')">RTN</button>
+                        <button id="mode-kep-btn" class="mode-toggle-btn" onclick="switchAnalysisMode('kepler')">Δ Kepler</button>
+                    </div>
+                </div>
                 <div class="loading-overlay" id="loading-analysis">Processing Data...</div>
-                <div class="charts-container">
+                <!-- RTN Grafikleri -->
+                <div class="charts-container" id="rtn-charts">
                     <div class="chart-box"><canvas id="chartX"></canvas></div>
                     <div class="chart-box"><canvas id="chartY"></canvas></div>
                     <div class="chart-box"><canvas id="chartZ"></canvas></div>
                 </div>
+                <!-- Kepler Hata Grafikleri -->
+                <div class="charts-container" id="kepler-charts" style="display:none;">
+                    <div class="chart-box"><canvas id="chartDeltaA"></canvas></div>
+                    <div class="chart-box"><canvas id="chartDeltaE"></canvas></div>
+                    <div class="chart-box"><canvas id="chartDeltaI"></canvas></div>
+                </div>
+                <!-- Kepler İstatistik Tablosu -->
+                <div id="kepler-stats-table" style="display:none; margin-top:10px; font-family:'Rajdhani',sans-serif; font-size:0.82rem; color:#94a3b8;"></div>
             </div>
             <div class="skyplot-section">
                 <h3 class="panel-title" id="ui-sp-title">Topocentric Skyplot Visibility</h3>
@@ -895,21 +915,47 @@
         });
     }
 
+    let currentAnalysisMode = 'rtn'; // 'rtn' veya 'kepler'
+    let myChartDeltaA = null, myChartDeltaE = null, myChartDeltaI = null;
+    let lastAnalyzedSat = null;
+
+    function switchAnalysisMode(mode) {
+        currentAnalysisMode = mode;
+        document.getElementById('mode-rtn-btn').classList.toggle('active-mode', mode === 'rtn');
+        document.getElementById('mode-kep-btn').classList.toggle('active-mode', mode === 'kepler');
+        document.getElementById('rtn-charts').style.display    = mode === 'rtn'    ? 'flex' : 'none';
+        document.getElementById('kepler-charts').style.display = mode === 'kepler' ? 'flex' : 'none';
+        document.getElementById('kepler-stats-table').style.display = mode === 'kepler' ? 'block' : 'none';
+        // Eğer uydu zaten analiz edilmişse, diğer mod verilerini otomatik yükle
+        if (lastAnalyzedSat) openAnalysis(lastAnalyzedSat);
+    }
+
     async function openAnalysis(satId) {
         const lang = i18n[currentLang];
         if (!satId.startsWith('G')) { alert(lang.errGps); return; }
+        lastAnalyzedSat = satId;
         document.getElementById('ap-sat-id').innerText = `| ${satId}`;
         document.getElementById('loading-analysis').style.display = 'flex';
         document.getElementById('analysis-anchor').scrollIntoView({ behavior: 'smooth' });
+
         try {
-            const response = await fetch(`http://localhost:8000/api/analysis?sat=${satId}`);
-            const data = await response.json();
-            if (data.status === 'error') { alert(data.message); document.getElementById('loading-analysis').style.display = 'none'; return; }
+            if (currentAnalysisMode === 'rtn') {
+                const response = await fetch(`http://localhost:8000/api/analysis?sat=${satId}`);
+                const data = await response.json();
+                if (data.status === 'error') { alert(data.message); document.getElementById('loading-analysis').style.display = 'none'; return; }
+                document.getElementById('loading-analysis').style.display = 'none';
+                currentAnalysisData = data.analysis;
+                renderCharts(currentAnalysisData);
+            } else {
+                const response = await fetch(`http://localhost:8000/api/kepler_errors?sat=${satId}`);
+                const data = await response.json();
+                if (data.status === 'error') { alert(data.message); document.getElementById('loading-analysis').style.display = 'none'; return; }
+                document.getElementById('loading-analysis').style.display = 'none';
+                renderKeplerCharts(data.kepler_errors, data.stats);
+            }
+        } catch (error) {
+            alert("API Error: " + error.message);
             document.getElementById('loading-analysis').style.display = 'none';
-            currentAnalysisData = data.analysis;
-            renderCharts(currentAnalysisData);
-        } catch (error) { 
-            alert("API Error"); document.getElementById('loading-analysis').style.display = 'none'; 
         }
     }
 
@@ -922,6 +968,91 @@
         myChartA = new Chart(document.getElementById('chartX'), { type: 'line', data: { labels, datasets: [{ label: 'Radial', data: analysisData.radial, borderColor: '#38bdf8', backgroundColor: 'rgba(56, 189, 248, 0.1)', fill: true, borderWidth: 2, tension: 0.3, pointRadius: 0 }] }, options: { ...commonOptions, plugins: { title: { display: true, text: lang.cRadial, color: '#e2e8f0', font: { family: 'Montserrat', size: 12 } } } } });
         myChartE = new Chart(document.getElementById('chartY'), { type: 'line', data: { labels, datasets: [{ label: 'Along-track', data: analysisData.along, borderColor: '#facc15', backgroundColor: 'rgba(250, 204, 21, 0.1)', fill: true, borderWidth: 2, tension: 0.3, pointRadius: 0 }] }, options: { ...commonOptions, plugins: { title: { display: true, text: lang.cAlong, color: '#e2e8f0', font: { family: 'Montserrat', size: 12 } } } } });
         myChartI = new Chart(document.getElementById('chartZ'), { type: 'line', data: { labels, datasets: [{ label: 'Cross-track', data: analysisData.cross, borderColor: '#ef4444', backgroundColor: 'rgba(239, 68, 68, 0.1)', fill: true, borderWidth: 2, tension: 0.3, pointRadius: 0 }] }, options: { ...commonOptions, plugins: { title: { display: true, text: lang.cCross, color: '#e2e8f0', font: { family: 'Montserrat', size: 12 } } } } });
+    }
+
+    function renderKeplerCharts(keplerErrors, stats) {
+        if (myChartDeltaA) myChartDeltaA.destroy();
+        if (myChartDeltaE) myChartDeltaE.destroy();
+        if (myChartDeltaI) myChartDeltaI.destroy();
+
+        const labels = keplerErrors.times;
+        Chart.defaults.color = '#64748b';
+        Chart.defaults.font.family = 'Rajdhani';
+        const commonOpts = (titleText, color) => ({
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false },
+                title: { display: true, text: titleText, color: '#e2e8f0', font: { family: 'Montserrat', size: 12 } }
+            },
+            scales: {
+                y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#64748b' } },
+                x: { grid: { display: false }, ticks: { color: '#64748b', maxTicksLimit: 12 } }
+            }
+        });
+
+        const makeDataset = (data, color) => ({
+            data,
+            borderColor: color,
+            backgroundColor: color.replace(')', ', 0.08)').replace('rgb', 'rgba'),
+            fill: true, borderWidth: 2, tension: 0.35, pointRadius: 0
+        });
+
+        myChartDeltaA = new Chart(document.getElementById('chartDeltaA'), {
+            type: 'line',
+            data: { labels, datasets: [makeDataset(keplerErrors.delta_A, '#38bdf8')] },
+            options: commonOpts('ΔA — Semi-Major Axis Error [m]  (SP3 − Broadcast)', '#38bdf8')
+        });
+        myChartDeltaE = new Chart(document.getElementById('chartDeltaE'), {
+            type: 'line',
+            data: { labels, datasets: [makeDataset(keplerErrors.delta_E, '#a78bfa')] },
+            options: commonOpts('Δe — Eccentricity Error  (SP3 − Broadcast)', '#a78bfa')
+        });
+        myChartDeltaI = new Chart(document.getElementById('chartDeltaI'), {
+            type: 'line',
+            data: { labels, datasets: [makeDataset(keplerErrors.delta_I, '#fb923c')] },
+            options: commonOpts('Δi — Inclination Error [°]  (SP3 − Broadcast)', '#fb923c')
+        });
+
+        // İstatistik tablosu
+        const s = stats || {};
+        const fmt = (v) => v !== undefined ? v.toFixed(4) : '—';
+        const fmtE = (v) => v !== undefined ? v.toExponential(3) : '—';
+        document.getElementById('kepler-stats-table').innerHTML = `
+            <table style="width:100%; border-collapse:collapse; font-size:0.8rem;">
+                <thead>
+                    <tr style="color:#475569; text-transform:uppercase; letter-spacing:1px; font-size:0.7rem;">
+                        <th style="text-align:left; padding:6px 10px; border-bottom:1px solid rgba(255,255,255,0.06);">Parameter</th>
+                        <th style="padding:6px 10px; border-bottom:1px solid rgba(255,255,255,0.06);">Mean</th>
+                        <th style="padding:6px 10px; border-bottom:1px solid rgba(255,255,255,0.06);">Std Dev</th>
+                        <th style="padding:6px 10px; border-bottom:1px solid rgba(255,255,255,0.06);">Min</th>
+                        <th style="padding:6px 10px; border-bottom:1px solid rgba(255,255,255,0.06);">Max</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr style="color:#e2e8f0;">
+                        <td style="padding:6px 10px; color:#38bdf8; font-weight:600;">ΔA [m]</td>
+                        <td style="text-align:center; padding:6px 10px;">${s.delta_A ? fmt(s.delta_A.mean) : '—'}</td>
+                        <td style="text-align:center; padding:6px 10px;">${s.delta_A ? fmt(s.delta_A.std) : '—'}</td>
+                        <td style="text-align:center; padding:6px 10px;">${s.delta_A ? fmt(s.delta_A.min) : '—'}</td>
+                        <td style="text-align:center; padding:6px 10px;">${s.delta_A ? fmt(s.delta_A.max) : '—'}</td>
+                    </tr>
+                    <tr style="color:#e2e8f0;">
+                        <td style="padding:6px 10px; color:#a78bfa; font-weight:600;">Δe</td>
+                        <td style="text-align:center; padding:6px 10px;">${s.delta_E ? fmtE(s.delta_E.mean) : '—'}</td>
+                        <td style="text-align:center; padding:6px 10px;">${s.delta_E ? fmtE(s.delta_E.std) : '—'}</td>
+                        <td style="text-align:center; padding:6px 10px;">${s.delta_E ? fmtE(s.delta_E.min) : '—'}</td>
+                        <td style="text-align:center; padding:6px 10px;">${s.delta_E ? fmtE(s.delta_E.max) : '—'}</td>
+                    </tr>
+                    <tr style="color:#e2e8f0;">
+                        <td style="padding:6px 10px; color:#fb923c; font-weight:600;">Δi [°]</td>
+                        <td style="text-align:center; padding:6px 10px;">${s.delta_I ? fmt(s.delta_I.mean) : '—'}</td>
+                        <td style="text-align:center; padding:6px 10px;">${s.delta_I ? fmt(s.delta_I.std) : '—'}</td>
+                        <td style="text-align:center; padding:6px 10px;">${s.delta_I ? fmt(s.delta_I.min) : '—'}</td>
+                        <td style="text-align:center; padding:6px 10px;">${s.delta_I ? fmt(s.delta_I.max) : '—'}</td>
+                    </tr>
+                </tbody>
+            </table>`;
     }
 
     async function loadSatellites(skipFetch = false) {

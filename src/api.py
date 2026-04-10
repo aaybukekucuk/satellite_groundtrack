@@ -20,6 +20,7 @@ from utils.velocity import calculate_sp3_velocity_from_positions
 from utils.rtn_transform import ecef_to_rtn_error
 from utils.satpos_utils import calculate_satpos_from_kepler
 from utils.apc_utils import read_antex_gps, datetime_to_mjd, calc_sunpos, calc_satapc
+from utils.compare_kepler import analyze_kepler_errors
 
 from contextlib import asynccontextmanager
 import uvicorn # En alta uvicorn ile çalıştırma kodu ekleyeceğiz
@@ -108,20 +109,39 @@ def get_satellites(sats: str = "G01"):
             lat, lon, h = ecef_to_geodetic(c["x"], c["y"], c["z"])
             track_points.append({"lat": lat, "lon": lon, "alt": h, "time": c["time"].isoformat()})
             
-        kepler_list = KEPLER_DATA.get(sat_id, [])
-        kepler = kepler_list[0] if kepler_list else {} # UI için ilk parametreyi al
+        c0 = coords[0]
         
+        # Hız Vektörleri (vx, vy, vz) ve Skaler Hız (vel_kms) Hesaplama
         vel_kms = 0.0
+        vx, vy, vz = 0.0, 0.0, 0.0
         if len(coords) >= 2:
             p1, p2 = coords[0], coords[1]
             dt = (p2["time"] - p1["time"]).total_seconds()
             if dt > 0:
-                vx = (p2["x"] - p1["x"]) * 1000 / dt 
-                vy = (p2["y"] - p1["y"]) * 1000 / dt 
-                vz = (p2["z"] - p1["z"]) * 1000 / dt 
+                vx = (p2["x"] - p1["x"]) * 1000 / dt  # m/s
+                vy = (p2["y"] - p1["y"]) * 1000 / dt  # m/s
+                vz = (p2["z"] - p1["z"]) * 1000 / dt  # m/s
                 vel_kms = math.sqrt(vx**2 + vy**2 + vz**2) / 1000.0
         
-        c0 = coords[0]
+        # =====================================================================
+        # DİNAMİK DÖNÜŞÜM MOTORU ENTEGRASYONU (HOCANIN İSTEDİĞİ KISIM)
+        # =====================================================================
+        kepler_list = KEPLER_DATA.get(sat_id, [])
+        kepler = {}
+        
+        # Eğer uydu GLONASS ('R') ise Kepler parametrelerini ANLIK hesapla!
+        if sat_id.startswith("R"):
+            if len(coords) >= 2:
+                r_vec = [c0["x"] * 1000.0, c0["y"] * 1000.0, c0["z"] * 1000.0] # Metre
+                v_vec = [vx, vy, vz] # m/s
+                
+                # Sizin yazdığınız state_to_kepler fonksiyonunu çağırıyoruz
+                kepler = calculate_kepler_from_state(r_vec, v_vec)
+        else:
+            # GPS ve Galileo için Broadcast dosyasından statik okumaya devam et
+            kepler = kepler_list[0] if kepler_list else {}
+        # =====================================================================
+
         az, el, dist = ecef_to_topocentric(c0["x"], c0["y"], c0["z"], STATION["lat"], STATION["lon"], STATION["h"])
         
         instant_data = {
@@ -211,6 +231,58 @@ def get_kepler_analysis(sat: str = "G01"):
     return {"status": "success", "sat_id": sat_id, "analysis": {
         "times": times_str, "radial": radial_err, "along": along_err, "cross": cross_err
     }}
+
+@app.get("/api/kepler_errors")
+def get_kepler_errors(sat: str = "G01"):
+    sat_id = sat.strip().upper()
+    coords = [entry for entry in SP3_DATA if entry["id"] == sat_id]
+    brdc_list = KEPLER_DATA.get(sat_id, [])
+
+    if len(coords) < 3 or not brdc_list:
+        return {"status": "error", "message": f"{sat_id} için yeterli SP3/Broadcast verisi bulunamadı."}
+
+    # Günün ortasına en yakın broadcast efemerisini referans al
+    mid_time = coords[len(coords) // 2]["time"]
+    best_eph = min(brdc_list, key=lambda eph: abs(get_tk(mid_time, eph["toe"])))
+
+    error_series = analyze_kepler_errors(coords, best_eph)
+
+    if not error_series:
+        return {"status": "error", "message": "Kepler hata serisi hesaplanamadı. Veri yetersiz olabilir."}
+
+    times   = [e["time"][11:16] for e in error_series]   # sadece HH:MM
+    delta_a = [e["delta_A_meters"] for e in error_series]
+    delta_e = [e["delta_E"]        for e in error_series]
+    delta_i = [e["delta_I_deg"]    for e in error_series]
+
+    # Özet istatistikler
+    def stats(lst):
+        if not lst: return {}
+        import statistics
+        return {
+            "mean":  round(statistics.mean(lst), 6),
+            "std":   round(statistics.stdev(lst), 6) if len(lst) > 1 else 0,
+            "max":   round(max(lst), 6),
+            "min":   round(min(lst), 6),
+        }
+
+    return {
+        "status": "success",
+        "sat_id": sat_id,
+        "brdc_toe": best_eph.get("toe", 0),
+        "kepler_errors": {
+            "times":   times,
+            "delta_A": delta_a,
+            "delta_E": delta_e,
+            "delta_I": delta_i,
+        },
+        "stats": {
+            "delta_A": stats(delta_a),
+            "delta_E": stats(delta_e),
+            "delta_I": stats(delta_i),
+        }
+    }
+
 
 if __name__ == "__main__":
     import uvicorn

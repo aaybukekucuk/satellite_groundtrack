@@ -44,15 +44,30 @@ def gibbs_method(r1, r2, r3, mu):
     v2 = L * (B + S)
     return v2
 
+def _get_brdc_param(brdc_kepler, *keys):
+    """Birden fazla olası key adını dener, ilk bulunanı döner."""
+    for k in keys:
+        if k in brdc_kepler:
+            return brdc_kepler[k]
+    return None
+
 def analyze_kepler_errors(sp3_coords, brdc_kepler):
     error_series = []
-    
-    if not brdc_kepler or "A (Yarı Büyük Eksen) [m]" not in brdc_kepler:
+
+    # Broadcast parametrelerini esnek key isimleriyle çek
+    brdc_a = _get_brdc_param(brdc_kepler,
+        "A (Yarı Büyük Eksen) [m]", "sqrtA", "a", "semi_major_axis")
+    brdc_e = _get_brdc_param(brdc_kepler,
+        "e (Dışmerkezlik)", "e", "eccentricity")
+    brdc_i = _get_brdc_param(brdc_kepler,
+        "i0 (Yörünge Eğikliği)", "i0", "inclination")
+
+    if brdc_a is None or brdc_e is None or brdc_i is None:
         return error_series
-        
-    brdc_a = brdc_kepler.get("A (Yarı Büyük Eksen) [m]", 0)
-    brdc_e = brdc_kepler.get("e (Dışmerkezlik)", 0)
-    brdc_i = brdc_kepler.get("i0 (Yörünge Eğikliği)", 0)
+
+    # sqrtA ise metreye çevir (RINEX sqrtA = karekök(a) cinsinden)
+    if "sqrtA" in brdc_kepler and "A (Yarı Büyük Eksen) [m]" not in brdc_kepler:
+        brdc_a = brdc_a ** 2  # sqrt(a)^2 = a
 
     # Gibbs için 3 nokta yeterli (Geçmiş, Şimdi, Gelecek)
     for idx in range(1, len(sp3_coords) - 1):
