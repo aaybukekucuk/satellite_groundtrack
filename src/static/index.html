@@ -638,43 +638,57 @@
         });
         scene.add(new THREE.Mesh(haloGeo, haloMat));
 
-        // ── ORBIT RINGS ──
-        function makeOrbit(radiusOrbit, tiltX, tiltZ, color, opacity) {
+        // ── GPS ORBIT PLANES (matematiksel olarak doğru: i=55°, 6 düzlem, RAAN=0-300°) ──
+        // Yörünge denklemi (ECI, ω=0, dairesel):
+        //   ex = r·(cos(Ω)cos(v) − sin(Ω)sin(v)cos(i))
+        //   ey = r·(sin(Ω)cos(v) + cos(Ω)sin(v)cos(i))
+        //   ez = r·sin(v)·sin(i)
+        // Three.js koordinat sistemi: X→X, Z(kutup=yukarı)→Y, Y→Z
+
+        const GPS_INC      = 55 * Math.PI / 180;   // 55° eğim
+        const GPS_RAANS    = [0, 60, 120, 180, 240, 300].map(d => d * Math.PI / 180);
+        const GPS_COLORS   = [0x38bdf8, 0xff6b6b, 0x90ee90, 0xffd700, 0xff69b4, 0xda70d6];
+        const ORBIT_R      = 1.45;                  // sahne birimi (normalize)
+
+        function makeGPSOrbit(raan, color, opacity) {
             const pts = [];
-            for (let i = 0; i <= 128; i++) {
-                const a = (i / 128) * Math.PI * 2;
-                pts.push(new THREE.Vector3(Math.cos(a) * radiusOrbit, 0, Math.sin(a) * radiusOrbit));
+            for (let k = 0; k <= 180; k++) {
+                const v    = (k / 180) * Math.PI * 2;
+                const cosV = Math.cos(v), sinV = Math.sin(v);
+                const ex   = ORBIT_R * (Math.cos(raan)*cosV - Math.sin(raan)*sinV*Math.cos(GPS_INC));
+                const ey   = ORBIT_R * (Math.sin(raan)*cosV + Math.cos(raan)*sinV*Math.cos(GPS_INC));
+                const ez   = ORBIT_R * sinV * Math.sin(GPS_INC);
+                pts.push(new THREE.Vector3(ex, ez, ey));   // ECI→Three.js: (x, z_pole, y)
             }
-            const orbitGeo = new THREE.BufferGeometry().setFromPoints(pts);
-            const orbitMat = new THREE.LineBasicMaterial({ color, transparent: true, opacity });
-            const orbit = new THREE.Line(orbitGeo, orbitMat);
-            orbit.rotation.x = tiltX;
-            orbit.rotation.z = tiltZ;
-            return orbit;
+            const geo = new THREE.BufferGeometry().setFromPoints(pts);
+            const mat = new THREE.LineBasicMaterial({ color, transparent: true, opacity, depthWrite: false });
+            return new THREE.Line(geo, mat);
         }
 
-        const orbits = [
-            makeOrbit(1.45, 0.95, 0.1,  0x38bdf8, 0.25),
-            makeOrbit(1.50, 0.50, 0.8,  0xfacc15, 0.18),
-            makeOrbit(1.42, 1.20, 0.3,  0xef4444, 0.18),
-            makeOrbit(1.55, 0.30, 1.1,  0x38bdf8, 0.12),
-        ];
-        orbits.forEach(o => scene.add(o));
+        // 6 yörünge düzlemi ekle
+        const orbits = GPS_RAANS.map((raan, idx) => {
+            const orbit = makeGPSOrbit(raan, GPS_COLORS[idx], idx === 0 ? 0.40 : 0.24);
+            scene.add(orbit);
+            return orbit;
+        });
 
-        // ── SATELLITE DOTS ON ORBITS ──
-        const satDots = orbits.map((orbit, idx) => {
-            const r = [1.45, 1.50, 1.42, 1.55][idx];
-            const dotGeo = new THREE.SphereGeometry(0.018, 8, 8);
-            const dotMat = new THREE.MeshBasicMaterial({ color: [0x38bdf8, 0xfacc15, 0xef4444, 0x38bdf8][idx] });
-            const dot = new THREE.Mesh(dotGeo, dotMat);
-            // Attach to orbit group
-            const group = new THREE.Group();
-            group.rotation.x = orbit.rotation.x;
-            group.rotation.z = orbit.rotation.z;
-            dot.position.set(r, 0, 0);
-            group.add(dot);
-            scene.add(group);
-            return { group, dot, r, speed: [0.003, 0.002, 0.0035, 0.0025][idx], angle: idx * 1.5 };
+        // ── UYDU NOKTALARI — her düzlemde 4 uydu, yörünge üzerinde animasyonlu ──
+        const satDots = [];
+        GPS_RAANS.forEach((raan, planeIdx) => {
+            const color = GPS_COLORS[planeIdx];
+            for (let s = 0; s < 4; s++) {
+                const initAngle = (s / 4) * Math.PI * 2 + planeIdx * 0.52; // düzlem içi dağılım
+                const dotGeo = new THREE.SphereGeometry(0.016, 8, 8);
+                const dotMat = new THREE.MeshBasicMaterial({ color });
+                const dot    = new THREE.Mesh(dotGeo, dotMat);
+                scene.add(dot);
+                satDots.push({
+                    dot,
+                    raan,
+                    angle : initAngle,
+                    speed : 0.0028 + planeIdx * 0.0002
+                });
+            }
         });
 
         // ── LIGHTS ──
@@ -711,10 +725,15 @@
             camera.position.y += (-mouseY * 0.3 - camera.position.y) * 0.03;
             camera.lookAt(scene.position);
 
-            // Animate satellite dots
+            // Uydu noktalarını doğru yörünge denklemleriyle animasyonla
             satDots.forEach(s => {
                 s.angle += s.speed;
-                s.dot.position.set(Math.cos(s.angle) * s.r, 0, Math.sin(s.angle) * s.r);
+                const v    = s.angle;
+                const cosV = Math.cos(v), sinV = Math.sin(v);
+                const ex   = ORBIT_R * (Math.cos(s.raan)*cosV - Math.sin(s.raan)*sinV*Math.cos(GPS_INC));
+                const ey   = ORBIT_R * (Math.sin(s.raan)*cosV + Math.cos(s.raan)*sinV*Math.cos(GPS_INC));
+                const ez   = ORBIT_R * sinV * Math.sin(GPS_INC);
+                s.dot.position.set(ex, ez, ey);
             });
 
             renderer.render(scene, camera);
@@ -852,6 +871,55 @@
 
     function resetCamera() { if (viewer) viewer.camera.flyHome(1.5); }
     function focusSatellite(satId) { if (satelliteEntities[satId] && satelliteEntities[satId].point) viewer.flyTo(satelliteEntities[satId].point, { duration: 1.5, offset: new Cesium.HeadingPitchRange(0, -Cesium.Math.PI_OVER_FOUR, 15000000) }); }
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // GPS KONSTELASYONUNUNtam yörünge elipsleri (Cesium'a çizilir)
+    // API'den gelen ECI km verisi → Cesium Cartesian3'e dönüştürülür
+    // ──────────────────────────────────────────────────────────────────────────
+    let constellationOrbitEntities = [];
+
+    async function loadConstellationOrbits() {
+        // Eski yörünge çizgilerini temizle
+        constellationOrbitEntities.forEach(e => { if (viewer) viewer.entities.remove(e); });
+        constellationOrbitEntities = [];
+        if (!viewer) return;
+
+        try {
+            const resp = await fetch('http://localhost:8000/api/constellation/planes');
+            const data = await resp.json();
+            if (data.status !== 'success') return;
+
+            data.planes.forEach(plane => {
+                // ECI km → ECEF metre (basit yaklaşım: ECI≈ECEF anlık görsel için yeterli)
+                const positions = [];
+                for (let i = 0; i < plane.x.length; i++) {
+                    positions.push(new Cesium.Cartesian3(
+                        plane.x[i] * 1000,   // km → m
+                        plane.y[i] * 1000,
+                        plane.z[i] * 1000
+                    ));
+                }
+                // Yörünge elipsini çiz
+                const color = Cesium.Color.fromCssColorString(plane.color).withAlpha(0.55);
+                const entity = viewer.entities.add({
+                    name: plane.plane,
+                    polyline: {
+                        positions,
+                        width: 1.5,
+                        material: new Cesium.PolylineDashMaterialProperty({
+                            color,
+                            dashLength: 20.0
+                        }),
+                        arcType: Cesium.ArcType.NONE   // Düz hat (3D uzayda doğru)
+                    }
+                });
+                constellationOrbitEntities.push(entity);
+            });
+
+        } catch (err) {
+            console.warn('Constellation orbit yüklenemedi:', err);
+        }
+    }
 
     function drawSkyplot() {
         if (skyplotChart) skyplotChart.destroy();
@@ -1117,6 +1185,9 @@
             }
         });
         if (!skipFetch && viewer) viewer.zoomTo(viewer.entities);
+
+        // GPS seçiliyse tam yörünge elipslerini de çiz
+        if (currentConstellation === 'G') loadConstellationOrbits();
     }
 
     buildGrid();

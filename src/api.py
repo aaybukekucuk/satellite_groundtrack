@@ -21,6 +21,15 @@ from utils.rtn_transform import ecef_to_rtn_error
 from utils.satpos_utils import calculate_satpos_from_kepler
 from utils.apc_utils import read_antex_gps, datetime_to_mjd, calc_sunpos, calc_satapc
 from utils.compare_kepler import analyze_kepler_errors
+from visualizer.plot_3d_orbit import (
+    get_all_planes_data,
+    get_orbit_points_for_satellite,
+    GPS_SATELLITES,
+    GPS_PLANES,
+    GPS_A, GPS_E, GPS_I_DEG,
+    kepler_to_xyz,
+    get_satellite_position,
+)
 
 from contextlib import asynccontextmanager
 import uvicorn # En alta uvicorn ile çalıştırma kodu ekleyeceğiz
@@ -283,6 +292,123 @@ def get_kepler_errors(sat: str = "G01"):
         }
     }
 
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 3D YÖRÜNGE / KONSTELASYONendpointleri
+# plot_3d_orbit.py ile entegrasyon — Three.js frontend'inin tükettiği veriler
+# ═══════════════════════════════════════════════════════════════════════════
+
+@app.get("/api/constellation/planes")
+def get_constellation_planes():
+    """
+    GPS'in 6 yörünge düzlemini döndürür.
+    Her düzlem: RAAN (60° aralıklı), i=55°, 360 noktalı XYZ listesi.
+    Three.js'de TubeGeometry veya Line ile doğrudan çizilebilir.
+    """
+    try:
+        planes = get_all_planes_data()
+        return {
+            "status": "success",
+            "meta": {
+                "inclination_deg": GPS_I_DEG,
+                "semi_major_axis_km": GPS_A,
+                "eccentricity": GPS_E,
+                "plane_count": len(planes),
+                "raan_spacing_deg": 60
+            },
+            "planes": planes
+        }
+    except Exception as exc:
+        return {"status": "error", "message": str(exc)}
+
+
+@app.get("/api/constellation/orbit/{prn}")
+def get_single_orbit(prn: str, raan: float = None, omega: float = 0.0):
+    """
+    Tek bir uyduya ait yörünge noktalarını döndürür.
+
+    Query parametreleri (isteğe bağlı):
+      raan  : RAAN açısını manuel override et (derece)
+      omega : Perigee argümanını override et (derece)
+
+    Kullanım:
+      GET /api/constellation/orbit/G01
+      GET /api/constellation/orbit/G01?raan=45&omega=10
+    """
+    prn_upper = prn.strip().upper()
+    try:
+        data = get_orbit_points_for_satellite(
+            prn=prn_upper,
+            raan_override=raan,
+            omega_override=omega
+        )
+        return {"status": "success", "orbit": data}
+    except ValueError as exc:
+        return {"status": "error", "message": str(exc)}
+
+
+@app.get("/api/constellation/satellites")
+def get_constellation_satellites(sats: str = None):
+    """
+    SP3 verisiyle uyumlu anlık uydu konumlarını döndürür.
+    RAAN ve Kepler tabanlı nominal konumları içerir.
+
+    Query parametresi:
+      sats : Virgülle ayrılmış PRN listesi. Boş bırakılırsa tüm GPS (G01-G32).
+
+    Her uydu için döner:
+      prn, x, y, z (km), color, plane (A-F), raan, inclination
+      + SP3'ten gelen gerçek anlık konum (eğer mevcutsa)
+    """
+    if sats:
+        selected = [s.strip().upper() for s in sats.split(",")]
+    else:
+        selected = list(GPS_SATELLITES.keys())
+
+    result = []
+    for prn in selected:
+        if prn not in GPS_SATELLITES:
+            continue
+
+        raan_deg, m0_deg = GPS_SATELLITES[prn]
+
+        # Nominal (Kepler tabanlı) konum
+        nx, ny, nz = get_satellite_position(raan_deg=raan_deg, mean_anomaly_deg=m0_deg)
+
+        # SP3 gerçek konum (varsa — ECEF km)
+        sp3_entry = next((e for e in SP3_DATA if e["id"] == prn), None)
+        sp3_pos = None
+        if sp3_entry:
+            sp3_pos = {
+                "x_km": sp3_entry["x"],
+                "y_km": sp3_entry["y"],
+                "z_km": sp3_entry["z"],
+                "time": sp3_entry["time"].isoformat()
+            }
+
+        plane_letters = ["A", "B", "C", "D", "E", "F"]
+        plane_raans   = [0, 60, 120, 180, 240, 300]
+        plane_letter  = plane_letters[plane_raans.index(raan_deg)] if raan_deg in plane_raans else "?"
+
+        from visualizer.plot_3d_orbit import PLANE_COLORS
+        result.append({
+            "prn": prn,
+            "plane": plane_letter,
+            "raan_deg": raan_deg,
+            "inclination_deg": GPS_I_DEG,
+            "color": PLANE_COLORS.get(raan_deg, "#ffffff"),
+            "nominal_position_km": {"x": nx, "y": ny, "z": nz},
+            "sp3_position": sp3_pos
+        })
+
+    return {
+        "status": "success",
+        "count": len(result),
+        "satellites": result
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════════════
 
 if __name__ == "__main__":
     import uvicorn

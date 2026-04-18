@@ -93,13 +93,10 @@ def analyze_kepler_errors(sp3_coords, brdc_kepler):
         r3_eci = rotate_z(r3_ecef, -OMEGA_E * dt3)
         
         try:
-            # 3. GIBBS İLE KUSURSUZ FİZİKSEL HIZ
             v2_eci = gibbs_method(r1_eci, r2_eci, r3_eci, MU)
             
-            # 4. Hız ve Konumu kitaptaki formüle yolla
             sp3_kep = calculate_kepler_from_state(r2_eci, v2_eci)
             
-            # Milyonluk farkların yok oluşunu izle
             delta_a = sp3_kep["A (Yarı Büyük Eksen) [m]"] - brdc_a
             delta_e = sp3_kep["e (Dışmerkezlik)"] - brdc_e
             delta_i = math.degrees(sp3_kep["i0 (Yörünge Eğikliği)"] - brdc_i)
