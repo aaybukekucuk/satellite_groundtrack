@@ -410,6 +410,107 @@ def get_constellation_satellites(sats: str = None):
 
 # ═══════════════════════════════════════════════════════════════════════════
 
+# ═══════════════════════════════════════════════════════════════════════════
+# SKYPLOT — Her uydu için tam gün Az/El ark verisi
+# ═══════════════════════════════════════════════════════════════════════════
+
+# Bilinen IGS referans istasyonları (Türkiye ve çevresi)
+IGS_STATIONS = {
+    "ANKR": {"lat": 39.887472, "lon": 32.758667, "h": 975.0,  "city": "Ankara"},
+    "ISTA": {"lat": 41.104722, "lon": 29.020833, "h": 174.0,  "city": "Istanbul"},
+    "TUBI": {"lat": 40.786944, "lon": 31.374167, "h": 1005.0, "city": "Gebze"},
+    "IZMI": {"lat": 38.394722, "lon": 27.075833, "h": 117.0,  "city": "Izmir"},
+    "ERZR": {"lat": 39.901944, "lon": 41.277222, "h": 1868.0, "city": "Erzurum"},
+}
+
+@app.get("/api/skyplot")
+def get_skyplot_arcs(
+    sats: str = "G01",
+    station: str = "ANKR",
+    lat: float = None,
+    lon: float = None,
+    h: float = None
+):
+    """
+    Seçili uydular için tüm SP3 epoch'larında azimut/elevasyon arkını döndürür.
+    Yalnızca el > 0° (ufkun üstü) noktaları dahil edilir.
+
+    Parametreler
+    ------------
+    sats    : Virgülle ayrılmış PRN listesi  (örn. "G01,G09,G12")
+    station : IGS istasyon kodu              (ANKR, ISTA, TUBI, IZMI, ERZR)
+    lat/lon/h: Özel koordinat (station yerine)
+    """
+    selected = [s.strip().upper() for s in sats.split(",")]
+
+    # İstasyon koordinatlarını belirle
+    if lat is not None and lon is not None:
+        sta_lat, sta_lon, sta_h = lat, lon, (h or 100.0)
+        sta_name = f"CUSTOM ({lat:.3f}°N, {lon:.3f}°E)"
+        sta_city = "Custom"
+    elif station.upper() in IGS_STATIONS:
+        s = IGS_STATIONS[station.upper()]
+        sta_lat, sta_lon, sta_h = s["lat"], s["lon"], s["h"]
+        sta_name = station.upper()
+        sta_city = s["city"]
+    else:
+        # Fallback: ANKR
+        s = IGS_STATIONS["ANKR"]
+        sta_lat, sta_lon, sta_h = s["lat"], s["lon"], s["h"]
+        sta_name = "ANKR"
+        sta_city = s["city"]
+
+    arcs = []
+    for sat_id in selected:
+        coords = [e for e in SP3_DATA if e["id"] == sat_id]
+        if not coords:
+            continue
+
+        arc_pts = []
+        prev_visible = False
+        segment = []
+
+        for c in coords:
+            az, el, dist = ecef_to_topocentric(
+                c["x"], c["y"], c["z"],
+                sta_lat, sta_lon, sta_h
+            )
+            visible = el > 0.0
+
+            if visible:
+                segment.append({
+                    "az": round(az, 2),
+                    "el": round(el, 2),
+                    "t":  c["time"].strftime("%H:%M")
+                })
+            else:
+                if segment:
+                    arc_pts.append(segment)   # ufkun altına inince segmenti kapat
+                    segment = []
+
+        if segment:
+            arc_pts.append(segment)           # gün sonu kalan segment
+
+        if arc_pts:
+            arcs.append({
+                "id":       sat_id,
+                "segments": arc_pts           # birden fazla geçiş olabilir
+            })
+
+    return {
+        "status": "success",
+        "station": {
+            "name": sta_name,
+            "city": sta_city,
+            "lat":  sta_lat,
+            "lon":  sta_lon,
+            "h":    sta_h
+        },
+        "arcs": arcs,
+        "available_stations": list(IGS_STATIONS.keys())
+    }
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("api:app", host="127.0.0.1", port=8000, reload=True)

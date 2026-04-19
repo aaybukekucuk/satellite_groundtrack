@@ -320,16 +320,22 @@
         .data-list b { color: #f8fafc; font-weight: 500; font-family: 'Rajdhani', sans-serif; font-size: 0.9rem;}
         .map-wrapper { flex: 1; border-radius: 12px; overflow: hidden; border: 1px solid rgba(56, 189, 248, 0.2); position: relative; }
         #cesiumContainer { width: 100%; height: 100%; }
-        .cesium-viewer-bottom { display: none !important; }
+        .cesium-viewer-bottom { display: block !important; }
+        .cesium-timeline-main { background: #0f172a !important; border-top: 1px solid rgba(56,189,248,0.3) !important; }
+        .cesium-timeline-bar { background: rgba(56,189,248,0.15) !important; }
+        .cesium-timeline-needle { background: #38bdf8 !important; }
+        .cesium-animation-theme .cesiumButton { background: rgba(56,189,248,0.12) !important; border-color: rgba(56,189,248,0.3) !important; }
+        .cesium-animation-container { filter: hue-rotate(190deg) brightness(0.85) !important; }
         .reset-cam-btn { position: absolute; bottom: 15px; right: 15px; z-index: 10; background: rgba(15, 23, 42, 0.8); border: 1px solid rgba(56, 189, 248, 0.4); color: #38bdf8; padding: 8px 15px; border-radius: 6px; font-family: 'Rajdhani', sans-serif; font-weight: 600; cursor: pointer;}
         .reset-cam-btn:hover { background: #38bdf8; color: #0f172a; }
-        .bottom-row { display: flex; gap: 20px; height: 35vh; min-height: 350px; }
-        .panel-title { font-family: 'Rajdhani', sans-serif; font-size: 1.2rem; color: #e2e8f0; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 10px; margin-top: 0; margin-bottom: 15px; }
+        .bottom-row { display: flex; gap: 20px; height: 42vh; min-height: 400px; }
+        .panel-title { font-family: 'Rajdhani', sans-serif; font-size: 1.2rem; color: #e2e8f0; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 10px; margin-top: 0; margin-bottom: 10px; }
         .analysis-section { flex: 2; background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; padding: 15px; display: flex; flex-direction: column; position: relative;}
         .charts-container { display: flex; gap: 15px; flex: 1; overflow: hidden; }
         .chart-box { flex: 1; position: relative; background: rgba(0,0,0,0.2); border-radius: 8px; padding: 10px;}
-        .skyplot-section { flex: 1; background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; padding: 15px; display: flex; flex-direction: column;}
-        .skyplot-canvas-wrapper { flex: 1; position: relative; width: 100%; display: flex; justify-content: center; align-items: center;}
+        .skyplot-section { flex: 1; min-width: 340px; background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; padding: 15px; display: flex; flex-direction: column; overflow: hidden; }
+        .skyplot-canvas-wrapper { flex: 1; position: relative; width: 100%; overflow: hidden; }
+        .skyplot-canvas-wrapper canvas { display: block; position: absolute; top: 0; left: 0; }
         .loading-overlay { position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(15, 23, 42, 0.8); display: flex; justify-content: center; align-items: center; color: #38bdf8; font-family: 'Rajdhani', sans-serif; font-size: 1.2rem; font-weight: bold; border-radius: 8px; z-index: 5; display: none;}
         .mode-toggle-btn { background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.15); color: #64748b; padding: 5px 16px; border-radius: 5px; font-family: 'Rajdhani', sans-serif; font-weight: 600; font-size: 0.9rem; cursor: pointer; letter-spacing: 1px; transition: 0.2s; }
         .mode-toggle-btn:hover { background: rgba(255,255,255,0.1); color: #e2e8f0; }
@@ -638,57 +644,43 @@
         });
         scene.add(new THREE.Mesh(haloGeo, haloMat));
 
-        // ── GPS ORBIT PLANES (matematiksel olarak doğru: i=55°, 6 düzlem, RAAN=0-300°) ──
-        // Yörünge denklemi (ECI, ω=0, dairesel):
-        //   ex = r·(cos(Ω)cos(v) − sin(Ω)sin(v)cos(i))
-        //   ey = r·(sin(Ω)cos(v) + cos(Ω)sin(v)cos(i))
-        //   ez = r·sin(v)·sin(i)
-        // Three.js koordinat sistemi: X→X, Z(kutup=yukarı)→Y, Y→Z
-
-        const GPS_INC      = 55 * Math.PI / 180;   // 55° eğim
-        const GPS_RAANS    = [0, 60, 120, 180, 240, 300].map(d => d * Math.PI / 180);
-        const GPS_COLORS   = [0x38bdf8, 0xff6b6b, 0x90ee90, 0xffd700, 0xff69b4, 0xda70d6];
-        const ORBIT_R      = 1.45;                  // sahne birimi (normalize)
-
-        function makeGPSOrbit(raan, color, opacity) {
+        // ── ORBIT RINGS ──
+        function makeOrbit(radiusOrbit, tiltX, tiltZ, color, opacity) {
             const pts = [];
-            for (let k = 0; k <= 180; k++) {
-                const v    = (k / 180) * Math.PI * 2;
-                const cosV = Math.cos(v), sinV = Math.sin(v);
-                const ex   = ORBIT_R * (Math.cos(raan)*cosV - Math.sin(raan)*sinV*Math.cos(GPS_INC));
-                const ey   = ORBIT_R * (Math.sin(raan)*cosV + Math.cos(raan)*sinV*Math.cos(GPS_INC));
-                const ez   = ORBIT_R * sinV * Math.sin(GPS_INC);
-                pts.push(new THREE.Vector3(ex, ez, ey));   // ECI→Three.js: (x, z_pole, y)
+            for (let i = 0; i <= 128; i++) {
+                const a = (i / 128) * Math.PI * 2;
+                pts.push(new THREE.Vector3(Math.cos(a) * radiusOrbit, 0, Math.sin(a) * radiusOrbit));
             }
-            const geo = new THREE.BufferGeometry().setFromPoints(pts);
-            const mat = new THREE.LineBasicMaterial({ color, transparent: true, opacity, depthWrite: false });
-            return new THREE.Line(geo, mat);
+            const orbitGeo = new THREE.BufferGeometry().setFromPoints(pts);
+            const orbitMat = new THREE.LineBasicMaterial({ color, transparent: true, opacity });
+            const orbit = new THREE.Line(orbitGeo, orbitMat);
+            orbit.rotation.x = tiltX;
+            orbit.rotation.z = tiltZ;
+            return orbit;
         }
 
-        // 6 yörünge düzlemi ekle
-        const orbits = GPS_RAANS.map((raan, idx) => {
-            const orbit = makeGPSOrbit(raan, GPS_COLORS[idx], idx === 0 ? 0.40 : 0.24);
-            scene.add(orbit);
-            return orbit;
-        });
+        const orbits = [
+            makeOrbit(1.45, 0.95, 0.1,  0x38bdf8, 0.25),
+            makeOrbit(1.50, 0.50, 0.8,  0xfacc15, 0.18),
+            makeOrbit(1.42, 1.20, 0.3,  0xef4444, 0.18),
+            makeOrbit(1.55, 0.30, 1.1,  0x38bdf8, 0.12),
+        ];
+        orbits.forEach(o => scene.add(o));
 
-        // ── UYDU NOKTALARI — her düzlemde 4 uydu, yörünge üzerinde animasyonlu ──
-        const satDots = [];
-        GPS_RAANS.forEach((raan, planeIdx) => {
-            const color = GPS_COLORS[planeIdx];
-            for (let s = 0; s < 4; s++) {
-                const initAngle = (s / 4) * Math.PI * 2 + planeIdx * 0.52; // düzlem içi dağılım
-                const dotGeo = new THREE.SphereGeometry(0.016, 8, 8);
-                const dotMat = new THREE.MeshBasicMaterial({ color });
-                const dot    = new THREE.Mesh(dotGeo, dotMat);
-                scene.add(dot);
-                satDots.push({
-                    dot,
-                    raan,
-                    angle : initAngle,
-                    speed : 0.0028 + planeIdx * 0.0002
-                });
-            }
+        // ── SATELLITE DOTS ON ORBITS ──
+        const satDots = orbits.map((orbit, idx) => {
+            const r = [1.45, 1.50, 1.42, 1.55][idx];
+            const dotGeo = new THREE.SphereGeometry(0.018, 8, 8);
+            const dotMat = new THREE.MeshBasicMaterial({ color: [0x38bdf8, 0xfacc15, 0xef4444, 0x38bdf8][idx] });
+            const dot = new THREE.Mesh(dotGeo, dotMat);
+            // Attach to orbit group
+            const group = new THREE.Group();
+            group.rotation.x = orbit.rotation.x;
+            group.rotation.z = orbit.rotation.z;
+            dot.position.set(r, 0, 0);
+            group.add(dot);
+            scene.add(group);
+            return { group, dot, r, speed: [0.003, 0.002, 0.0035, 0.0025][idx], angle: idx * 1.5 };
         });
 
         // ── LIGHTS ──
@@ -725,15 +717,10 @@
             camera.position.y += (-mouseY * 0.3 - camera.position.y) * 0.03;
             camera.lookAt(scene.position);
 
-            // Uydu noktalarını doğru yörünge denklemleriyle animasyonla
+            // Animate satellite dots
             satDots.forEach(s => {
                 s.angle += s.speed;
-                const v    = s.angle;
-                const cosV = Math.cos(v), sinV = Math.sin(v);
-                const ex   = ORBIT_R * (Math.cos(s.raan)*cosV - Math.sin(s.raan)*sinV*Math.cos(GPS_INC));
-                const ey   = ORBIT_R * (Math.sin(s.raan)*cosV + Math.cos(s.raan)*sinV*Math.cos(GPS_INC));
-                const ez   = ORBIT_R * sinV * Math.sin(GPS_INC);
-                s.dot.position.set(ex, ez, ey);
+                s.dot.position.set(Math.cos(s.angle) * s.r, 0, Math.sin(s.angle) * s.r);
             });
 
             renderer.render(scene, camera);
@@ -861,7 +848,7 @@
 
     function initCesium() {
         viewer = new Cesium.Viewer('cesiumContainer', {
-            baseLayerPicker: false, geocoder: false, animation: false, timeline: false,
+            baseLayerPicker: false, geocoder: false, animation: true, timeline: true,
             infoBox: false, navigationHelpButton: false, sceneModePicker: true, 
             imageryProvider: new Cesium.TileMapServiceImageryProvider({ url: Cesium.buildModuleUrl('Assets/Textures/NaturalEarthII') })
         });
@@ -869,117 +856,334 @@
         viewer.scene.globe.enableLighting = false; 
     }
 
-    function resetCamera() { if (viewer) viewer.camera.flyHome(1.5); }
-    function focusSatellite(satId) { if (satelliteEntities[satId] && satelliteEntities[satId].point) viewer.flyTo(satelliteEntities[satId].point, { duration: 1.5, offset: new Cesium.HeadingPitchRange(0, -Cesium.Math.PI_OVER_FOUR, 15000000) }); }
+    // ──────────────────────────────────────────────────────────────────────────
+    // UYDU İKONU — Canvas ile çizilen küçük uydu sembolü
+    // ──────────────────────────────────────────────────────────────────────────
+    function createSatelliteIcon(cssColor) {
+        const canvas = document.createElement('canvas');
+        canvas.width = 32; canvas.height = 32;
+        const ctx = canvas.getContext('2d');
+        ctx.clearRect(0, 0, 32, 32);
+
+        ctx.strokeStyle = cssColor; ctx.fillStyle = cssColor; ctx.lineWidth = 1.5;
+
+        // Uydu gövdesi
+        ctx.fillRect(11, 11, 10, 10);
+        // Sol güneş paneli
+        ctx.fillRect(1, 13, 9, 6);
+        // Sağ güneş paneli
+        ctx.fillRect(22, 13, 9, 6);
+        // Panel çerçeveleri (detay)
+        ctx.strokeRect(1, 13, 9, 6);
+        ctx.strokeRect(22, 13, 9, 6);
+        // Anten
+        ctx.beginPath(); ctx.moveTo(16, 11); ctx.lineTo(16, 5); ctx.stroke();
+        ctx.beginPath(); ctx.arc(16, 4, 2.5, 0, Math.PI*2);
+        ctx.fillStyle = cssColor; ctx.fill();
+
+        return canvas;
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // SAAT PANELİ — Cesium simülasyon saatini gösterir
+    // ──────────────────────────────────────────────────────────────────────────
+    function startClockDisplay() {
+        let clockPanel = document.getElementById('sim-clock-panel');
+        if (!clockPanel) {
+            clockPanel = document.createElement('div');
+            clockPanel.id = 'sim-clock-panel';
+            clockPanel.style.cssText = `
+                position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
+                z-index: 10; background: rgba(10,15,30,0.82); backdrop-filter: blur(8px);
+                border: 1px solid rgba(56,189,248,0.35); border-radius: 8px;
+                padding: 6px 18px; display: flex; align-items: center; gap: 12px;
+                font-family: 'Rajdhani', sans-serif; color: #e2e8f0; font-size: 0.88rem;
+                pointer-events: none;
+            `;
+            document.querySelector('.map-wrapper').appendChild(clockPanel);
+        }
+
+        function updatePanel() {
+            if (!viewer) return;
+            const jd  = viewer.clock.currentTime;
+            const iso = Cesium.JulianDate.toIso8601(jd, 0);    // UTC ISO string
+            const date = iso.slice(0,10);
+            const time = iso.slice(11,19);
+            const spd  = viewer.clock.multiplier;
+            clockPanel.innerHTML = `
+                <span style="color:#64748b;letter-spacing:2px;font-size:0.7rem;">SIM TIME</span>
+                <span style="color:#38bdf8;font-size:1.05rem;font-weight:700;">${date}</span>
+                <span style="color:#e2e8f0;font-size:1rem;">${time} UTC</span>
+                <span style="color:#64748b;font-size:0.75rem;">×${spd}</span>
+            `;
+            requestAnimationFrame(updatePanel);
+        }
+        updatePanel();
+    }
 
     // ──────────────────────────────────────────────────────────────────────────
     // GPS KONSTELASYONUNUNtam yörünge elipsleri (Cesium'a çizilir)
-    // API'den gelen ECI km verisi → Cesium Cartesian3'e dönüştürülür
+    // Kural: Her seçili uydu için SADECE o uyduya ait yörünge çizilir.
+    // Aynı orbital düzlemdeki iki uydu seçilirse yörünge TEK çizilir (duplicate yok).
     // ──────────────────────────────────────────────────────────────────────────
     let constellationOrbitEntities = [];
 
-    async function loadConstellationOrbits() {
-        // Eski yörünge çizgilerini temizle
+    const PRN_TO_RAAN = {
+        G01:0,G03:0,G08:0,G14:0,
+        G09:60,G27:60,G10:60,G30:60,
+        G06:120,G19:120,G24:120,G11:120,
+        G02:180,G17:180,G28:180,G20:180,
+        G05:240,G18:240,G21:240,G15:240,
+        G29:300,G07:300,G26:300,G12:300
+    };
+
+    const ORBIT_COLORS_CSS = {
+        0:'#38bdf8', 60:'#ff6b6b', 120:'#90ee90',
+        180:'#ffd700', 240:'#ff69b4', 300:'#da70d6'
+    };
+
+    function eciKmToCartesian(x, y, z) {
+        return new Cesium.Cartesian3(x * 1000, y * 1000, z * 1000);
+    }
+
+    // Kepler → orbit noktaları (ECI → Cesium Cartesian)
+    function computeOrbitPoints(raan_deg, inc_deg = 55, a_km = 26560, e = 0.01, n = 360) {
+        const RAAN = raan_deg * Math.PI / 180;
+        const INC  = inc_deg  * Math.PI / 180;
+        const p    = a_km * (1 - e * e);
+        const pts  = [];
+        for (let k = 0; k <= n; k++) {
+            const v    = (k / n) * Math.PI * 2;
+            const r    = p / (1 + e * Math.cos(v));
+            const cosV = Math.cos(v), sinV = Math.sin(v);
+            const x = r * (Math.cos(RAAN)*cosV - Math.sin(RAAN)*sinV*Math.cos(INC));
+            const y = r * (Math.sin(RAAN)*cosV + Math.cos(RAAN)*sinV*Math.cos(INC));
+            const z = r * sinV * Math.sin(INC);
+            pts.push(eciKmToCartesian(x, y, z));
+        }
+        return pts;
+    }
+
+    function drawConstellationOrbits() {
         constellationOrbitEntities.forEach(e => { if (viewer) viewer.entities.remove(e); });
         constellationOrbitEntities = [];
         if (!viewer) return;
 
-        try {
-            const resp = await fetch('http://localhost:8000/api/constellation/planes');
-            const data = await resp.json();
-            if (data.status !== 'success') return;
+        const gpsSats = Array.from(selectedSats).filter(s => s.startsWith('G'));
+        if (gpsSats.length === 0) return;
 
-            data.planes.forEach(plane => {
-                // ECI km → ECEF metre (basit yaklaşım: ECI≈ECEF anlık görsel için yeterli)
-                const positions = [];
-                for (let i = 0; i < plane.x.length; i++) {
-                    positions.push(new Cesium.Cartesian3(
-                        plane.x[i] * 1000,   // km → m
-                        plane.y[i] * 1000,
-                        plane.z[i] * 1000
-                    ));
+        const drawnRaans = new Set();
+        gpsSats.forEach(prn => {
+            const raan = PRN_TO_RAAN[prn];
+            if (raan === undefined || drawnRaans.has(raan)) return;
+            drawnRaans.add(raan);
+
+            const positions = computeOrbitPoints(raan);
+            const cssColor  = ORBIT_COLORS_CSS[raan] || '#38bdf8';
+            const cesColor  = Cesium.Color.fromCssColorString(cssColor).withAlpha(0.65);
+
+            const entity = viewer.entities.add({
+                name: `GPS Plane RAAN=${raan}°`,
+                polyline: {
+                    positions,
+                    width: 1.8,
+                    material: new Cesium.PolylineDashMaterialProperty({ color: cesColor, dashLength: 18 }),
+                    arcType: Cesium.ArcType.NONE
                 }
-                // Yörünge elipsini çiz
-                const color = Cesium.Color.fromCssColorString(plane.color).withAlpha(0.55);
-                const entity = viewer.entities.add({
-                    name: plane.plane,
-                    polyline: {
-                        positions,
-                        width: 1.5,
-                        material: new Cesium.PolylineDashMaterialProperty({
-                            color,
-                            dashLength: 20.0
-                        }),
-                        arcType: Cesium.ArcType.NONE   // Düz hat (3D uzayda doğru)
-                    }
-                });
-                constellationOrbitEntities.push(entity);
             });
-
-        } catch (err) {
-            console.warn('Constellation orbit yüklenemedi:', err);
-        }
+            constellationOrbitEntities.push(entity);
+        });
     }
 
-    function drawSkyplot() {
-        if (skyplotChart) skyplotChart.destroy();
-        const visibleSats = latestSatData.filter(sat => sat.instant_data && sat.instant_data.topocentric.elevation > 0);
-        const datasets = visibleSats.map(sat => {
-            const az = sat.instant_data.topocentric.azimuth;
-            const el = sat.instant_data.topocentric.elevation;
-            const r = 90 - el; 
-            const azRad = az * (Math.PI / 180); 
-            const x = r * Math.sin(azRad);
-            const y = r * Math.cos(azRad);
-            let ptColor = '#38bdf8'; 
-            if (sat.id.startsWith('G')) ptColor = '#facc15'; 
-            if (sat.id.startsWith('R')) ptColor = '#ef4444'; 
-            return { label: sat.id, data: [{ x, y }], backgroundColor: ptColor, borderColor: '#fff', borderWidth: 1, pointRadius: 5, pointHoverRadius: 8 };
+    function resetCamera() { if (viewer) viewer.camera.flyHome(1.5); }
+    function focusSatellite(satId) { if (satelliteEntities[satId] && satelliteEntities[satId].point) viewer.flyTo(satelliteEntities[satId].point, { duration: 1.5, offset: new Cesium.HeadingPitchRange(0, -Cesium.Math.PI_OVER_FOUR, 15000000) }); }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // PROFESYONEL SKYPLOT — Canvas 2D, HiDPI, ark izleri, elevasyon gradyanı
+    // Bilimsel doğruluk: N üstte, dıştan içe 0°(horizon)→90°(zenit)
+    // Maske çizgisi 10° (kırmızı kesikli) — standart GNSS pratiği
+    // ═══════════════════════════════════════════════════════════════════════
+    async function drawSkyplot() {
+        const canvas  = document.getElementById('skyplotChart');
+        const wrapper = canvas.parentElement;
+        const DPR     = window.devicePixelRatio || 1;
+        const W = wrapper.clientWidth  || 320;
+        const H = wrapper.clientHeight || 320;
+        canvas.width  = Math.round(W * DPR);
+        canvas.height = Math.round(H * DPR);
+        canvas.style.width  = W + 'px';
+        canvas.style.height = H + 'px';
+        const ctx = canvas.getContext('2d');
+        ctx.scale(DPR, DPR);
+
+        const LEGEND_H = 22;
+        const PAD      = 40;
+        const plotH    = H - LEGEND_H;
+        const cx = W / 2, cy = plotH / 2;
+        const maxR = Math.min(W / 2, plotH / 2) - PAD;
+
+        function toXY(az, el) {
+            const r = (1 - el / 90) * maxR;
+            return { x: cx + r * Math.sin(az * Math.PI/180), y: cy - r * Math.cos(az * Math.PI/180) };
+        }
+
+        // 1. Arka plan
+        ctx.clearRect(0, 0, W, H);
+        const bg = ctx.createRadialGradient(cx, cy, 0, cx, cy, maxR * 1.4);
+        bg.addColorStop(0, '#0d1b2e'); bg.addColorStop(0.6, '#0a1422'); bg.addColorStop(1, '#060d18');
+        ctx.fillStyle = bg; ctx.fillRect(0, 0, W, plotH);
+
+        // 2. Elevasyon bölge tonları
+        [[0,10,'rgba(239,68,68,0.08)'],[10,30,'rgba(251,146,60,0.04)']].forEach(([a,b,col])=>{
+            const r1=(1-a/90)*maxR, r2=(1-b/90)*maxR;
+            const g=ctx.createRadialGradient(cx,cy,r2,cx,cy,r1);
+            g.addColorStop(0,'transparent'); g.addColorStop(1,col);
+            ctx.beginPath(); ctx.arc(cx,cy,r1,0,Math.PI*2); ctx.arc(cx,cy,r2,0,Math.PI*2,true);
+            ctx.fillStyle=g; ctx.fill();
         });
-        Chart.defaults.font.family = 'Montserrat';
-        const ctx = document.getElementById('skyplotChart').getContext('2d');
-        skyplotChart = new Chart(ctx, {
-            type: 'scatter', data: { datasets },
-            options: {
-                responsive: true, maintainAspectRatio: false, layout: { padding: 20 },
-                plugins: {
-                    legend: { display: false },
-                    tooltip: { callbacks: { label: function(context) {
-                        const satId = context.dataset.label;
-                        const rawSat = visibleSats.find(s => s.id === satId);
-                        return `${satId} | Az: ${rawSat.instant_data.topocentric.azimuth.toFixed(1)}°, El: ${rawSat.instant_data.topocentric.elevation.toFixed(1)}°`;
-                    }}}
-                },
-                scales: { x: { min: -90, max: 90, display: false }, y: { min: -90, max: 90, display: false } },
-                animation: { duration: 800, easing: 'easeOutQuart' }
-            },
-            plugins: [{
-                id: 'skyplotDetailedBackground',
-                beforeDraw: (chart) => {
-                    const { ctx, chartArea: { top, bottom, left, right, width, height } } = chart;
-                    const centerX = left + width / 2; const centerY = top + height / 2; const maxR = Math.min(width, height) / 2;
-                    ctx.save(); ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.font = '10px Montserrat'; 
-                    [0, 30, 60].forEach(el => {
-                        const r = maxR * ((90 - el) / 90);
-                        ctx.beginPath(); ctx.arc(centerX, centerY, r, 0, 2 * Math.PI); ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)'; ctx.stroke();
-                        if (el > 0) { ctx.fillStyle = 'rgba(255, 255, 255, 0.5)'; ctx.fillText(`${el}°`, centerX + 10, centerY - r - 6); }
-                    });
-                    for (let az = 0; az < 360; az += 30) {
-                        const azRad = az * (Math.PI / 180);
-                        const x = centerX + maxR * Math.sin(azRad); const y = centerY - maxR * Math.cos(azRad);
-                        ctx.beginPath(); ctx.moveTo(centerX, centerY); ctx.lineTo(x, y); ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)'; ctx.stroke();
-                        const labelX = centerX + (maxR + 12) * Math.sin(azRad); const labelY = centerY - (maxR + 12) * Math.cos(azRad);
-                        ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
-                        if (az === 0) { ctx.fillStyle = '#ef4444'; ctx.font = 'bold 11px Montserrat'; ctx.fillText('N', labelX, labelY); } 
-                        else if (az === 90) { ctx.font = 'bold 11px Montserrat'; ctx.fillText('E', labelX, labelY); }
-                        else if (az === 180) { ctx.font = 'bold 11px Montserrat'; ctx.fillText('S', labelX, labelY); }
-                        else if (az === 270) { ctx.font = 'bold 11px Montserrat'; ctx.fillText('W', labelX, labelY); }
-                        else { ctx.font = '9px Montserrat'; ctx.fillText(`${az}°`, labelX, labelY); } 
-                    }
-                    ctx.beginPath(); ctx.arc(centerX, centerY, 2, 0, 2 * Math.PI); ctx.fillStyle = '#fff'; ctx.fill();
-                    ctx.restore();
+
+        // 3. Halka ızgara
+        [0,10,30,60,90].forEach(el=>{
+            const r=(1-el/90)*maxR;
+            ctx.beginPath(); ctx.arc(cx,cy,r,0,Math.PI*2);
+            if(el===0){ctx.strokeStyle='rgba(56,189,248,0.4)';ctx.lineWidth=1.5;ctx.setLineDash([]);}
+            else if(el===10){ctx.strokeStyle='rgba(239,68,68,0.55)';ctx.lineWidth=1;ctx.setLineDash([4,4]);}
+            else{ctx.strokeStyle='rgba(255,255,255,0.09)';ctx.lineWidth=0.8;ctx.setLineDash([]);}
+            ctx.stroke(); ctx.setLineDash([]);
+        });
+
+        // 4. Azimut çizgileri
+        for(let az=0;az<360;az+=30){
+            const i=toXY(az,90),o=toXY(az,0);
+            ctx.beginPath();ctx.moveTo(i.x,i.y);ctx.lineTo(o.x,o.y);
+            ctx.strokeStyle='rgba(255,255,255,0.055)';ctx.lineWidth=0.8;ctx.stroke();
+        }
+
+        // 5. Elevasyon etiketleri
+        [[10,'rgba(239,68,68,0.65)','bold 8.5px Montserrat'],
+         [30,'rgba(255,255,255,0.28)','8.5px Montserrat'],
+         [60,'rgba(255,255,255,0.28)','8.5px Montserrat']].forEach(([el,col,font])=>{
+            const p=toXY(2,el);
+            ctx.fillStyle=col; ctx.font=font; ctx.textAlign='left'; ctx.textBaseline='middle';
+            ctx.fillText(el+'°',p.x+3,p.y);
+        });
+
+        // 6. Yön etiketleri
+        [{az:0,l:'N',bold:true,col:'#ef4444'},{az:45,l:'NE',bold:false,col:'rgba(255,255,255,0.28)'},
+         {az:90,l:'E',bold:true,col:'rgba(226,232,240,0.9)'},{az:135,l:'SE',bold:false,col:'rgba(255,255,255,0.28)'},
+         {az:180,l:'S',bold:true,col:'rgba(226,232,240,0.9)'},{az:225,l:'SW',bold:false,col:'rgba(255,255,255,0.28)'},
+         {az:270,l:'W',bold:true,col:'rgba(226,232,240,0.9)'},{az:315,l:'NW',bold:false,col:'rgba(255,255,255,0.28)'}
+        ].forEach(d=>{
+            const p=toXY(d.az,-7);
+            ctx.fillStyle=d.col; ctx.font=d.bold?'bold 11px Montserrat':'8.5px Montserrat';
+            ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(d.l,p.x,p.y);
+        });
+
+        // 7. Veri/API kontrolü
+        const satQuery=Array.from(selectedSats).join(',');
+        const stationCode=document.getElementById('skyplot-station-select')?.value||'ANKR';
+        if(!satQuery||!latestSatData||latestSatData.length===0){
+            ctx.fillStyle='rgba(100,116,139,0.6)';ctx.font='11px Montserrat';
+            ctx.textAlign='center';ctx.textBaseline='middle';
+            ctx.fillText('Uydu yükle → Skyplot çizilir',cx,cy); return;
+        }
+
+        let skyData;
+        try{
+            const r=await fetch(`http://localhost:8000/api/skyplot?sats=${satQuery}&station=${stationCode}`);
+            skyData=await r.json();
+            if(skyData.status!=='success') throw new Error();
+        }catch(e){
+            ctx.fillStyle='rgba(239,68,68,0.75)';ctx.font='11px Montserrat';
+            ctx.textAlign='center';ctx.textBaseline='middle';
+            ctx.fillText('API bağlantısı kurulamadı',cx,cy); return;
+        }
+
+        const sta=skyData.station;
+        const infoEl=document.getElementById('skyplot-station-info');
+        if(infoEl) infoEl.textContent=`${sta.lat.toFixed(3)}°N  ${sta.lon.toFixed(3)}°E  h=${sta.h.toFixed(0)} m`;
+
+        function satColor(id){
+            if(id.startsWith('G')) return '#facc15';
+            if(id.startsWith('R')) return '#ef4444';
+            if(id.startsWith('E')) return '#38bdf8';
+            return '#a78bfa';
+        }
+
+        // 8. Uydu arklarını çiz
+        let visibleCount=0, maxElGlobal=0;
+        skyData.arcs.forEach(sat=>{
+            const color=satColor(sat.id);
+            visibleCount++;
+            sat.segments.forEach((seg,si)=>{
+                if(!seg.length) return;
+                seg.forEach(pt=>{ if(pt.el>maxElGlobal) maxElGlobal=pt.el; });
+                if(seg.length===1){
+                    const p=toXY(seg[0].az,seg[0].el);
+                    ctx.beginPath();ctx.arc(p.x,p.y,3,0,Math.PI*2);ctx.fillStyle=color;ctx.fill(); return;
                 }
-            }]
+                // Elevasyon bazlı gradyan çizgi
+                for(let k=0;k<seg.length-1;k++){
+                    const p1=toXY(seg[k].az,seg[k].el), p2=toXY(seg[k+1].az,seg[k+1].el);
+                    const elN=seg[k].el/90;
+                    ctx.shadowColor=seg[k].el>50?color:'transparent';
+                    ctx.shadowBlur=seg[k].el>50?5:0;
+                    ctx.beginPath(); ctx.moveTo(p1.x,p1.y); ctx.lineTo(p2.x,p2.y);
+                    ctx.strokeStyle=color; ctx.globalAlpha=0.3+elN*0.7;
+                    ctx.lineWidth=1.0+elN*2.0; ctx.stroke();
+                }
+                ctx.globalAlpha=1; ctx.shadowBlur=0;
+
+                // Giriş noktası + saat
+                const pIn=toXY(seg[0].az,seg[0].el);
+                ctx.beginPath();ctx.arc(pIn.x,pIn.y,3.5,0,Math.PI*2);
+                ctx.fillStyle=color;ctx.strokeStyle='rgba(255,255,255,0.5)';ctx.lineWidth=0.8;ctx.fill();ctx.stroke();
+                if(seg[0].t){
+                    ctx.fillStyle='rgba(255,255,255,0.4)';ctx.font='7.5px Montserrat';
+                    ctx.textAlign='center';ctx.textBaseline='bottom';
+                    ctx.fillText(seg[0].t+'z',pIn.x,pIn.y-5);
+                }
+
+                // Çıkış noktası + PRN + çıkış saati
+                if(si===sat.segments.length-1){
+                    const pOut=toXY(seg[seg.length-1].az,seg[seg.length-1].el);
+                    ctx.shadowColor=color; ctx.shadowBlur=6;
+                    ctx.beginPath();ctx.arc(pOut.x,pOut.y,5,0,Math.PI*2);
+                    ctx.fillStyle=color;ctx.strokeStyle='#fff';ctx.lineWidth=1.2;ctx.fill();ctx.stroke();
+                    ctx.shadowBlur=0;
+                    const side=pOut.x>cx?'left':'right', offX=pOut.x>cx?9:-9;
+                    ctx.fillStyle=color;ctx.font='bold 9px Rajdhani';
+                    ctx.textAlign=side;ctx.textBaseline='middle';
+                    ctx.fillText(sat.id,pOut.x+offX,pOut.y);
+                    if(seg[seg.length-1].t){
+                        ctx.fillStyle='rgba(255,255,255,0.3)';ctx.font='7.5px Montserrat';
+                        ctx.textBaseline='top';ctx.fillText(seg[seg.length-1].t+'z',pOut.x+offX,pOut.y+5);
+                    }
+                }
+            });
+        });
+
+        // 9. Merkez (istasyon)
+        ctx.shadowColor='#38bdf8'; ctx.shadowBlur=10;
+        ctx.beginPath();ctx.arc(cx,cy,4.5,0,Math.PI*2);
+        ctx.fillStyle='#38bdf8';ctx.strokeStyle='#fff';ctx.lineWidth=1.5;ctx.fill();ctx.stroke();
+        ctx.shadowBlur=0;
+        ctx.fillStyle='rgba(56,189,248,0.7)';ctx.font='bold 9px Rajdhani';
+        ctx.textAlign='center';ctx.textBaseline='top';ctx.fillText(sta.name,cx,cy+8);
+
+        // 10. Alt legend
+        ctx.fillStyle='rgba(6,13,24,0.88)';ctx.fillRect(0,plotH,W,LEGEND_H);
+        ctx.strokeStyle='rgba(56,189,248,0.15)';ctx.lineWidth=0.5;
+        ctx.beginPath();ctx.moveTo(0,plotH);ctx.lineTo(W,plotH);ctx.stroke();
+        ctx.fillStyle='rgba(148,163,184,0.75)';ctx.font='8.5px Montserrat';
+        ctx.textAlign='left';ctx.textBaseline='middle';
+        ctx.fillText(`${visibleCount} uydu görünür  |  max el: ${maxElGlobal.toFixed(1)}°  |  maske: 10° (kırmızı)`,9,plotH+LEGEND_H/2);
+        const legendItems=[{l:'GPS',c:'#facc15'},{l:'GLO',c:'#ef4444'},{l:'GAL',c:'#38bdf8'}];
+        let lx=W-9;
+        legendItems.reverse().forEach(item=>{
+            ctx.fillStyle=item.c;ctx.font='bold 9px Rajdhani';ctx.textAlign='right';ctx.textBaseline='middle';
+            ctx.fillText(item.l,lx,plotH+LEGEND_H/2); lx-=ctx.measureText(item.l).width+12;
+            ctx.beginPath();ctx.arc(lx,plotH+LEGEND_H/2,3,0,Math.PI*2);ctx.fillStyle=item.c;ctx.fill(); lx-=13;
         });
     }
 
@@ -1148,13 +1352,66 @@
             if (prefix === 'R') trackColor = Cesium.Color.RED; 
             if (prefix === 'E') trackColor = Cesium.Color.GOLD; 
             if (!skipFetch && viewer) {
+                // ── Ground track (statik yol izi) ──
                 const positions = sat.track.map(p => Cesium.Cartesian3.fromDegrees(p.lon, p.lat, p.alt));
-                const trackEntity = viewer.entities.add({ polyline: { positions, width: 2, material: new Cesium.PolylineDashMaterialProperty({ color: trackColor, dashLength: 15.0 }) } });
-                let pointEntity = null;
-                if (sat.track.length > 0) {
-                    const currentPos = sat.track[0];
-                    pointEntity = viewer.entities.add({ position: Cesium.Cartesian3.fromDegrees(currentPos.lon, currentPos.lat, currentPos.alt), point: { pixelSize: 8, color: trackColor, outlineColor: Cesium.Color.WHITE, outlineWidth: 1 }, label: { text: sat.id, font: 'bold 11pt Rajdhani', style: Cesium.LabelStyle.FILL_AND_OUTLINE, outlineWidth: 2, verticalOrigin: Cesium.VerticalOrigin.BOTTOM, pixelOffset: new Cesium.Cartesian2(0, -10) } });
-                }
+                const trackEntity = viewer.entities.add({
+                    polyline: { positions, width: 1.5,
+                        material: new Cesium.PolylineDashMaterialProperty({ color: trackColor.withAlpha(0.35), dashLength: 15.0 })
+                    }
+                });
+
+                // ── ANİMASYONLU UYDU — SampledPositionProperty ile zaman bazlı hareket ──
+                const posProperty = new Cesium.SampledPositionProperty();
+                sat.track.forEach(pt => {
+                    const jd  = Cesium.JulianDate.fromIso8601(pt.time);
+                    const pos = Cesium.Cartesian3.fromDegrees(pt.lon, pt.lat, pt.alt);
+                    posProperty.addSample(jd, pos);
+                });
+                posProperty.setInterpolationOptions({
+                    interpolationDegree: 5,
+                    interpolationAlgorithm: Cesium.LagrangePolynomialApproximation
+                });
+
+                // ── Uydu simgesi için renk CSS string'i ──
+                const colorCss = prefix === 'R' ? '#ef4444' : prefix === 'E' ? '#facc15' : '#38bdf8';
+                const iconCanvas = createSatelliteIcon(colorCss);
+
+                const pointEntity = viewer.entities.add({
+                    position: posProperty,
+
+                    // Uydu ikonlu billboard
+                    billboard: {
+                        image: iconCanvas,
+                        width: 26, height: 26,
+                        verticalOrigin: Cesium.VerticalOrigin.CENTER,
+                        scaleByDistance: new Cesium.NearFarScalar(1e6, 1.3, 1.5e8, 0.5)
+                    },
+
+                    // Uydu etiketi
+                    label: {
+                        text: sat.id,
+                        font: 'bold 11pt Rajdhani, sans-serif',
+                        style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+                        fillColor: Cesium.Color.WHITE,
+                        outlineColor: Cesium.Color.BLACK,
+                        outlineWidth: 2,
+                        verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
+                        pixelOffset: new Cesium.Cartesian2(0, -18),
+                        scaleByDistance: new Cesium.NearFarScalar(1e6, 1.0, 1.5e8, 0.4)
+                    },
+
+                    // Hareketli iz (2 saatlik trailing trail)
+                    path: {
+                        resolution: 60,
+                        leadTime: 0,
+                        trailTime: 7200,
+                        material: new Cesium.PolylineDashMaterialProperty({
+                            color: trackColor.withAlpha(0.7), dashLength: 20
+                        }),
+                        width: 1.5
+                    }
+                });
+
                 satelliteEntities[sat.id] = { track: trackEntity, point: pointEntity };
             }
             const k = sat.kepler; const r = sat.instant_data; const c = sat.track[0];
@@ -1184,10 +1441,29 @@
                 `;
             }
         });
-        if (!skipFetch && viewer) viewer.zoomTo(viewer.entities);
+        if (!skipFetch && viewer) {
+            viewer.zoomTo(viewer.entities);
 
-        // GPS seçiliyse tam yörünge elipslerini de çiz
-        if (currentConstellation === 'G') loadConstellationOrbits();
+            // ── Cesium saatini SP3 veri aralığına ayarla ──
+            if (latestSatData.length > 0 && latestSatData[0].track.length > 1) {
+                const track = latestSatData[0].track;
+                const tStart = Cesium.JulianDate.fromIso8601(track[0].time);
+                const tStop  = Cesium.JulianDate.fromIso8601(track[track.length - 1].time);
+                viewer.clock.startTime     = tStart.clone();
+                viewer.clock.stopTime      = tStop.clone();
+                viewer.clock.currentTime   = tStart.clone();
+                viewer.clock.clockRange    = Cesium.ClockRange.LOOP_STOP;
+                viewer.clock.multiplier    = 120;   // 1 saniye gerçek zaman = 2 dakika simülasyon
+                viewer.clockViewModel.shouldAnimate = true;
+                if (viewer.timeline) viewer.timeline.zoomTo(tStart, tStop);
+            }
+
+            // Saat panelini başlat (ilk yüklemede)
+            if (!document.getElementById('sim-clock-panel')) startClockDisplay();
+        }
+
+        // GPS seçiliyse o uyduların yörünge elipslerini çiz
+        if (currentConstellation === 'G') drawConstellationOrbits();
     }
 
     buildGrid();
