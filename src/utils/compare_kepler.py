@@ -132,10 +132,11 @@ def analyze_kepler_errors(sp3_coords, brdc_kepler):
         if dt1 <= 0 or dt3 <= 0:
             continue
 
-        # 1. SP3 koordinatlarını km → m'ye çevir
-        r1_ecef = np.array([p1["x"] * 1000.0, p1["y"] * 1000.0, p1["z"] * 1000.0])
-        r2_ecef = np.array([p2["x"] * 1000.0, p2["y"] * 1000.0, p2["z"] * 1000.0])
-        r3_ecef = np.array([p3["x"] * 1000.0, p3["y"] * 1000.0, p3["z"] * 1000.0])
+        # read_sp3.py zaten km→m dönüşümü yapıyor
+        # Burada ×1000 YAPILMAZ — aksi hâlde ΔA 26.5 milyar metre çıkar
+        r1_ecef = np.array([p1["x"], p1["y"], p1["z"]])  # [m]
+        r2_ecef = np.array([p2["x"], p2["y"], p2["z"]])  # [m]
+        r3_ecef = np.array([p3["x"], p3["y"], p3["z"]])  # [m]
 
         # 2. ECEF → ECI dönüşümü (p2 anı referans)
         #

@@ -127,10 +127,11 @@ def get_satellites(sats: str = "G01"):
             p1, p2 = coords[0], coords[1]
             dt = (p2["time"] - p1["time"]).total_seconds()
             if dt > 0:
-                vx = (p2["x"] - p1["x"]) * 1000 / dt  # m/s
-                vy = (p2["y"] - p1["y"]) * 1000 / dt  # m/s
-                vz = (p2["z"] - p1["z"]) * 1000 / dt  # m/s
-                vel_kms = math.sqrt(vx**2 + vy**2 + vz**2) / 1000.0
+                # read_sp3 zaten metre döndürür → dx[m]/dt[s] = m/s (×1000 YOK)
+                vx = (p2["x"] - p1["x"]) / dt   # m/s
+                vy = (p2["y"] - p1["y"]) / dt   # m/s
+                vz = (p2["z"] - p1["z"]) / dt   # m/s
+                vel_kms = math.sqrt(vx**2 + vy**2 + vz**2) / 1000.0  # km/s (~3.9)
         
         # =====================================================================
         # DİNAMİK DÖNÜŞÜM MOTORU ENTEGRASYONU (HOCANIN İSTEDİĞİ KISIM)
@@ -141,8 +142,9 @@ def get_satellites(sats: str = "G01"):
         # Eğer uydu GLONASS ('R') ise Kepler parametrelerini ANLIK hesapla!
         if sat_id.startswith("R"):
             if len(coords) >= 2:
-                r_vec = [c0["x"] * 1000.0, c0["y"] * 1000.0, c0["z"] * 1000.0] # Metre
-                v_vec = [vx, vy, vz] # m/s
+                # read_sp3 zaten metre → ×1000 YOK
+                r_vec = [c0["x"], c0["y"], c0["z"]]  # [m]
+                v_vec = [vx, vy, vz]                 # [m/s]
                 
                 # Sizin yazdığınız state_to_kepler fonksiyonunu çağırıyoruz
                 kepler = calculate_kepler_from_state(r_vec, v_vec)
@@ -194,8 +196,9 @@ def get_kepler_analysis(sat: str = "G01"):
     for i in range(len(coords)):
         t_epoch = coords[i]['time']
         
-        # 1. SP3'ten gelen KÜTLE MERKEZİ (CoM) ECEF konumu ve Hızı
-        pos_com = [coords[i]['x'] * 1000.0, coords[i]['y'] * 1000.0, coords[i]['z'] * 1000.0]
+        # read_sp3.py zaten km→m dönüşümü yapıyor (×1000 orada var)
+        # Burada tekrar ×1000 YAPILMAZ — aksi hâlde 26.5 milyar metre olur
+        pos_com = [coords[i]['x'], coords[i]['y'], coords[i]['z']]  # [m]
         vel_ref = [sp3_velocities[i]['vx'], sp3_velocities[i]['vy'], sp3_velocities[i]['vz']]
         
         # 2. ANTEN FAZ MERKEZİ (APC) DÜZELTMESİ

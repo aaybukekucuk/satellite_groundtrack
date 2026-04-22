@@ -4,16 +4,13 @@ velocity.py
 SP3 konum serisinden sayısal türev ile hız vektörü hesabı.
 
 KRİTİK BİRİM NOTU:
-  read_sp3.py koordinatları KİLOMETRE [km] cinsinden döndürür.
-  api.py'de pozisyon için coords[i]['x'] * 1000 yapılıyor (km→m).
-  Hız için de aynı dönüşüm şart:
-      dx [km] / dt [s] = vx [km/s]  →  × 1000  →  vx [m/s]
-
-  Önceki kodda "SP3 zaten metre" yorumu YANLIŞ'tı.
-  Bu hata hız vektörünü 1000x küçültüyordu.
-  RTN dönüşümünde Q × Q̇ cross product'ı bozuluyordu,
-  E3 (normal) yanlış hesaplanıyor, tüm RTN çerçevesi çöküyordu.
-  Sonuç: Radyal grafik ~-26.5 milyar metre gösteriyordu (GPS orbit yarıçapı).
+  read_sp3.py satır 17: x = float(...) * 1000  # km → m
+  Yani coords[i]['x'] ZATEN METRE cinsinden gelir.
+  
+  Doğru türev: dx [m] / dt [s] = vx [m/s]  — çarpan gerekmez.
+  
+  YANLIŞ (eski kod): dx / dt * 1000  → m/s zannedip tekrar ×1000 → 1000× fazla hız
+  DOĞRU  (bu kod)  : dx / dt         → m/s (çarpan yok)
 """
 
 import math
@@ -36,12 +33,9 @@ def calculate_sp3_velocity_from_positions(coords):
     """
     SP3 konum serisinden Merkezi Fark yöntemiyle hız vektörü.
 
-    Giriş  : coords[i] = {'x': km, 'y': km, 'z': km, 'time': datetime}
-                          ^^^ SP3 KİLOMETRE cinsinden döndürür
-    Çıkış  : [{'time', 'vx', 'vy', 'vz'}]  ---  m/s
-
-    DÜZELTİLEN HATA:
-      dx [km] / dt [s] = km/s  --x1000-->  m/s
+    Giriş  : coords[i] = {'x': m, 'y': m, 'z': m, 'time': datetime}
+              (read_sp3.py km→m dönüşümü zaten yapar)
+    Çıkış  : [{'time', 'vx', 'vy', 'vz'}]  →  m/s
     """
     velocities = []
     n = len(coords)
@@ -60,7 +54,7 @@ def calculate_sp3_velocity_from_positions(coords):
             dy = coords[i]['y'] - coords[i-1]['y']
             dz = coords[i]['z'] - coords[i-1]['z']
         else:
-            # Merkezi Fark --- O(h2) hassasiyet
+            # Merkezi Fark — O(h²) hassasiyet
             dt = (coords[i+1]['time'] - coords[i-1]['time']).total_seconds()
             dx = coords[i+1]['x'] - coords[i-1]['x']
             dy = coords[i+1]['y'] - coords[i-1]['y']
@@ -71,12 +65,12 @@ def calculate_sp3_velocity_from_positions(coords):
                                 'vx': 0.0, 'vy': 0.0, 'vz': 0.0})
             continue
 
-        # SP3 km cinsinden: dx/dt = km/s --> x1000 --> m/s
+        # coords zaten metre → dx[m]/dt[s] = m/s  (×1000 YAPILMAZ)
         velocities.append({
             'time': coords[i]['time'],
-            'vx': dx / dt * 1000.0,
-            'vy': dy / dt * 1000.0,
-            'vz': dz / dt * 1000.0
+            'vx': dx / dt,   # m/s
+            'vy': dy / dt,   # m/s
+            'vz': dz / dt    # m/s
         })
 
     return velocities
