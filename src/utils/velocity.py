@@ -1,60 +1,77 @@
+"""
+velocity.py
+===========
+SP3 konum serisinden sayısal türev ile hız vektörü hesabı.
+
+ÖNEMLİ BİRİM NOTU:
+  read_sp3.py koordinatları METRE cinsinden döndürür (km değil).
+  Bu nedenle:  dx [m] / dt [s] = vx [m/s]  — herhangi bir çarpan gerekmez.
+
+  Eski kodda * 1000 vardı (km varsayımıyla), bu velocity'yi 1000x şişiriyordu.
+  Arayüzde "3217.90 km/s" olarak görünen değer aslında gerçek hızın
+  1000 katıydı. Doğru değer ≈ 3.9 km/s'dir.
+"""
+
 import math
 
+
 def calculate_orbital_velocity(x, y, z, a_meters):
-    """ECEF koordinatları ve Yarı Büyük Eksen (A) ile anlık yörünge hızını (km/s) hesaplar."""
-    mu = 3.986004418e14  # Dünya'nın yerçekimi sabiti (m^3/s^2)
-    
-    # Uydunun Dünya merkezine uzaklığı (r)
-    r = math.sqrt(x**2 + y**2 + z**2)
-    
+    """
+    Vis-Viva denklemiyle anlık yörünge hızı.
+    x, y, z : ECEF [m] | a_meters : yarı-büyük eksen [m]
+    Dönüş   : skaler hız [km/s]
+    """
+    MU = 3.986004418e14
+    r  = math.sqrt(x**2 + y**2 + z**2)
     if a_meters <= 0 or r <= 0:
         return 0.0
-        
-    # Vis-Viva Denklemi (Sonuç saniyede metre çıkar)
-    v_mps = math.sqrt(mu * ((2.0 / r) - (1.0 / a_meters)))
-    
-    # km/s cinsine çevir (MEO GPS uyduları için genelde ~3.8 - 3.9 km/s çıkar)
-    return v_mps / 1000.0
+    return math.sqrt(MU * (2.0 / r - 1.0 / a_meters)) / 1000.0
 
 
-def calculate_sp3_velocity_from_positions(dense_coords):
+def calculate_sp3_velocity_from_positions(coords):
     """
-    1 dakikalık sıklaştırılmış SP3 konum verilerinden (X, Y, Z - metre) 
-    sayısal türev (Merkezi Farklar yöntemi) ile Hız (Vx, Vy, Vz - m/s) vektörlerini hesaplar.
+    SP3 konum serisinden Merkezi Fark yöntemiyle hız vektörü.
+
+    Giriş  : coords[i] = {'x': m, 'y': m, 'z': m, 'time': datetime}
+    Çıkış  : [{'time', 'vx', 'vy', 'vz'}]  →  m/s
+
+    DÜZELTİLEN HATA:
+      SP3 zaten metre cinsinden → dx/dt = m/s (×1000 YAPILMAZ)
     """
     velocities = []
-    n = len(dense_coords)
-    
+    n = len(coords)
     if n < 3:
-        return velocities # Türev için en az 3 nokta lazım
-        
+        return velocities
+
     for i in range(n):
-        # Sınır koşulları: İlk noktada İleri Fark (Forward Difference)
         if i == 0:
-            dt = (dense_coords[1]['time'] - dense_coords[0]['time']).total_seconds()
-            vx = (dense_coords[1]['x'] - dense_coords[0]['x']) / dt
-            vy = (dense_coords[1]['y'] - dense_coords[0]['y']) / dt
-            vz = (dense_coords[1]['z'] - dense_coords[0]['z']) / dt
-            
-        # Sınır koşulları: Son noktada Geri Fark (Backward Difference)
+            dt = (coords[1]['time'] - coords[0]['time']).total_seconds()
+            dx = coords[1]['x'] - coords[0]['x']
+            dy = coords[1]['y'] - coords[0]['y']
+            dz = coords[1]['z'] - coords[0]['z']
         elif i == n - 1:
-            dt = (dense_coords[i]['time'] - dense_coords[i-1]['time']).total_seconds()
-            vx = (dense_coords[i]['x'] - dense_coords[i-1]['x']) / dt
-            vy = (dense_coords[i]['y'] - dense_coords[i-1]['y']) / dt
-            vz = (dense_coords[i]['z'] - dense_coords[i-1]['z']) / dt
-            
-        # Ara noktalar: Merkezi Fark (Central Difference) -> En hassas yöntem
+            dt = (coords[i]['time'] - coords[i-1]['time']).total_seconds()
+            dx = coords[i]['x'] - coords[i-1]['x']
+            dy = coords[i]['y'] - coords[i-1]['y']
+            dz = coords[i]['z'] - coords[i-1]['z']
         else:
-            dt = (dense_coords[i+1]['time'] - dense_coords[i-1]['time']).total_seconds()
-            vx = (dense_coords[i+1]['x'] - dense_coords[i-1]['x']) / dt
-            vy = (dense_coords[i+1]['y'] - dense_coords[i-1]['y']) / dt
-            vz = (dense_coords[i+1]['z'] - dense_coords[i-1]['z']) / dt
-            
+            # Merkezi Fark — O(h²) hassasiyet
+            dt = (coords[i+1]['time'] - coords[i-1]['time']).total_seconds()
+            dx = coords[i+1]['x'] - coords[i-1]['x']
+            dy = coords[i+1]['y'] - coords[i-1]['y']
+            dz = coords[i+1]['z'] - coords[i-1]['z']
+
+        if dt == 0:
+            velocities.append({'time': coords[i]['time'],
+                                'vx': 0.0, 'vy': 0.0, 'vz': 0.0})
+            continue
+
+        # SP3 metredeyse: m/s (×1000 YOK)
         velocities.append({
-            'time': dense_coords[i]['time'],
-            'vx': vx,
-            'vy': vy,
-            'vz': vz
+            'time': coords[i]['time'],
+            'vx': dx / dt,   # m/s
+            'vy': dy / dt,   # m/s
+            'vz': dz / dt    # m/s
         })
-        
+
     return velocities
