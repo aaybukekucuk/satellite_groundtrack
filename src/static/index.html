@@ -328,7 +328,7 @@
         .cesium-animation-container { filter: hue-rotate(190deg) brightness(0.85) !important; }
         .reset-cam-btn { position: absolute; bottom: 15px; right: 15px; z-index: 10; background: rgba(15, 23, 42, 0.8); border: 1px solid rgba(56, 189, 248, 0.4); color: #38bdf8; padding: 8px 15px; border-radius: 6px; font-family: 'Rajdhani', sans-serif; font-weight: 600; cursor: pointer;}
         .reset-cam-btn:hover { background: #38bdf8; color: #0f172a; }
-        .bottom-row { display: flex; gap: 20px; height: 42vh; min-height: 400px; }
+        .bottom-row { display: flex; gap: 20px; height: 55vh; min-height: 480px; }
         .panel-title { font-family: 'Rajdhani', sans-serif; font-size: 1.2rem; color: #e2e8f0; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 10px; margin-top: 0; margin-bottom: 10px; }
         .analysis-section { flex: 2; background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; padding: 15px; display: flex; flex-direction: column; position: relative;}
         .charts-container { display: flex; gap: 15px; flex: 1; overflow: hidden; }
@@ -1233,13 +1233,43 @@
 
     function renderCharts(analysisData) {
         const lang = i18n[currentLang];
-        if (myChartA) myChartA.destroy(); if (myChartE) myChartE.destroy(); if (myChartI) myChartI.destroy();
-        const labels = analysisData.times; 
-        Chart.defaults.color = '#64748b'; Chart.defaults.font.family = 'Rajdhani';
-        const commonOptions = { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { grid: { color: 'rgba(255,255,255,0.05)' } }, x: { grid: { display: false } } } };
-        myChartA = new Chart(document.getElementById('chartX'), { type: 'line', data: { labels, datasets: [{ label: 'Radial', data: analysisData.radial, borderColor: '#38bdf8', backgroundColor: 'rgba(56, 189, 248, 0.1)', fill: true, borderWidth: 2, tension: 0.3, pointRadius: 0 }] }, options: { ...commonOptions, plugins: { title: { display: true, text: lang.cRadial, color: '#e2e8f0', font: { family: 'Montserrat', size: 12 } } } } });
-        myChartE = new Chart(document.getElementById('chartY'), { type: 'line', data: { labels, datasets: [{ label: 'Along-track', data: analysisData.along, borderColor: '#facc15', backgroundColor: 'rgba(250, 204, 21, 0.1)', fill: true, borderWidth: 2, tension: 0.3, pointRadius: 0 }] }, options: { ...commonOptions, plugins: { title: { display: true, text: lang.cAlong, color: '#e2e8f0', font: { family: 'Montserrat', size: 12 } } } } });
-        myChartI = new Chart(document.getElementById('chartZ'), { type: 'line', data: { labels, datasets: [{ label: 'Cross-track', data: analysisData.cross, borderColor: '#ef4444', backgroundColor: 'rgba(239, 68, 68, 0.1)', fill: true, borderWidth: 2, tension: 0.3, pointRadius: 0 }] }, options: { ...commonOptions, plugins: { title: { display: true, text: lang.cCross, color: '#e2e8f0', font: { family: 'Montserrat', size: 12 } } } } });
+        if (myChartA) myChartA.destroy();
+        if (myChartE) myChartE.destroy();
+        if (myChartI) myChartI.destroy();
+        const labels = analysisData.times;
+        Chart.defaults.color = '#64748b';
+        Chart.defaults.font.family = 'Rajdhani';
+
+        const makeOpts = (titleText) => ({
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false },
+                title: { display: true, text: titleText, color: '#e2e8f0', font: { family: 'Montserrat', size: 12 }, padding: { bottom: 8 } }
+            },
+            scales: {
+                x: {
+                    grid: { display: false },
+                    ticks: { color: '#64748b', maxTicksLimit: 10, maxRotation: 0 },
+                    title: { display: true, text: currentLang === 'tr' ? 'Zaman (UTC)' : 'Time (UTC)', color: '#94a3b8', font: { size: 10 } }
+                },
+                y: {
+                    grid: { color: 'rgba(255,255,255,0.05)' },
+                    ticks: { color: '#64748b' },
+                    title: { display: true, text: currentLang === 'tr' ? 'Hata [m]' : 'Error [m]', color: '#94a3b8', font: { size: 10 } }
+                }
+            }
+        });
+
+        const makeDs = (label, data, color) => ({
+            label, data, borderColor: color,
+            backgroundColor: 'transparent',
+            fill: false, borderWidth: 1.8, tension: 0.3, pointRadius: 0
+        });
+
+        myChartA = new Chart(document.getElementById('chartX'), { type: 'line', data: { labels, datasets: [makeDs('Radial', analysisData.radial, '#38bdf8')] }, options: makeOpts(lang.cRadial) });
+        myChartE = new Chart(document.getElementById('chartY'), { type: 'line', data: { labels, datasets: [makeDs('Along-track', analysisData.along, '#facc15')] }, options: makeOpts(lang.cAlong) });
+        myChartI = new Chart(document.getElementById('chartZ'), { type: 'line', data: { labels, datasets: [makeDs('Cross-track', analysisData.cross, '#ef4444')] }, options: makeOpts(lang.cCross) });
     }
 
     function renderKeplerCharts(keplerErrors, stats) {
@@ -1250,40 +1280,48 @@
         const labels = keplerErrors.times;
         Chart.defaults.color = '#64748b';
         Chart.defaults.font.family = 'Rajdhani';
-        const commonOpts = (titleText, color) => ({
+        const commonOpts = (titleText, yUnit) => ({
             responsive: true,
             maintainAspectRatio: false,
             plugins: {
                 legend: { display: false },
-                title: { display: true, text: titleText, color: '#e2e8f0', font: { family: 'Montserrat', size: 12 } }
+                title: { display: true, text: titleText, color: '#e2e8f0', font: { family: 'Montserrat', size: 12 }, padding: { bottom: 8 } }
             },
             scales: {
-                y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#64748b' } },
-                x: { grid: { display: false }, ticks: { color: '#64748b', maxTicksLimit: 12 } }
+                x: {
+                    grid: { display: false },
+                    ticks: { color: '#64748b', maxTicksLimit: 12, maxRotation: 0 },
+                    title: { display: true, text: currentLang === 'tr' ? 'Zaman (UTC)' : 'Time (UTC)', color: '#94a3b8', font: { size: 10 } }
+                },
+                y: {
+                    grid: { color: 'rgba(255,255,255,0.05)' },
+                    ticks: { color: '#64748b' },
+                    title: { display: true, text: yUnit, color: '#94a3b8', font: { size: 10 } }
+                }
             }
         });
 
         const makeDataset = (data, color) => ({
             data,
             borderColor: color,
-            backgroundColor: color.replace(')', ', 0.08)').replace('rgb', 'rgba'),
-            fill: true, borderWidth: 2, tension: 0.35, pointRadius: 0
+            backgroundColor: 'transparent',
+            fill: false, borderWidth: 1.8, tension: 0.35, pointRadius: 0
         });
 
         myChartDeltaA = new Chart(document.getElementById('chartDeltaA'), {
             type: 'line',
             data: { labels, datasets: [makeDataset(keplerErrors.delta_A, '#38bdf8')] },
-            options: commonOpts('ΔA — Semi-Major Axis Error [m]  (SP3 − Broadcast)', '#38bdf8')
+            options: commonOpts('ΔA — Semi-Major Axis Error  (SP3 − Broadcast)', 'ΔA [m]')
         });
         myChartDeltaE = new Chart(document.getElementById('chartDeltaE'), {
             type: 'line',
             data: { labels, datasets: [makeDataset(keplerErrors.delta_E, '#a78bfa')] },
-            options: commonOpts('Δe — Eccentricity Error  (SP3 − Broadcast)', '#a78bfa')
+            options: commonOpts('Δe — Eccentricity Error  (SP3 − Broadcast)', 'Δe [dimensionless]')
         });
         myChartDeltaI = new Chart(document.getElementById('chartDeltaI'), {
             type: 'line',
             data: { labels, datasets: [makeDataset(keplerErrors.delta_I, '#fb923c')] },
-            options: commonOpts('Δi — Inclination Error [°]  (SP3 − Broadcast)', '#fb923c')
+            options: commonOpts('Δi — Inclination Error  (SP3 − Broadcast)', 'Δi [°]')
         });
 
         // İstatistik tablosu

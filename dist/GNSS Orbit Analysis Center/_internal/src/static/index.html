@@ -1,0 +1,1473 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GNSS Orbital Analysis Center</title>
+    
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
+    
+    <script src="https://cesium.com/downloads/cesiumjs/releases/1.114/Build/Cesium/Cesium.js"></script>
+    <link href="https://cesium.com/downloads/cesiumjs/releases/1.114/Build/Cesium/Widgets/widgets.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    
+    <style>
+        body { margin: 0; padding: 0; background-color: #0b1120; color: #f8fafc; font-family: 'Montserrat', sans-serif; overflow-x: hidden; scroll-behavior: smooth; }
+        * { box-sizing: border-box; }
+        
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #0f172a; }
+        ::-webkit-scrollbar-thumb { background: #38bdf8; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #0284c7; }
+
+        /* ─── LANDING PAGE ─── */
+        #landing-page {
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            position: relative;
+            z-index: 100;
+            padding: 20px;
+            overflow: hidden;
+            background: #020617;
+        }
+
+        /* Star field canvas sits behind everything */
+        #starfield-canvas {
+            position: absolute;
+            inset: 0;
+            z-index: 0;
+            pointer-events: none;
+        }
+
+        /* Three.js globe canvas */
+        #globe-canvas {
+            position: absolute;
+            inset: 0;
+            z-index: 1;
+            pointer-events: none;
+        }
+
+        /* Gradient vignette over globe so text is readable */
+        .lp-vignette {
+            position: absolute;
+            inset: 0;
+            z-index: 2;
+            background: radial-gradient(ellipse at center,
+                rgba(2, 6, 23, 0) 30%,
+                rgba(2, 6, 23, 0.55) 60%,
+                rgba(2, 6, 23, 0.92) 100%);
+            pointer-events: none;
+        }
+
+        /* Horizontal scan-line shimmer */
+        .lp-scanlines {
+            position: absolute;
+            inset: 0;
+            z-index: 3;
+            background: repeating-linear-gradient(
+                0deg,
+                transparent,
+                transparent 2px,
+                rgba(0, 0, 0, 0.04) 2px,
+                rgba(0, 0, 0, 0.04) 4px
+            );
+            pointer-events: none;
+        }
+
+        /* Content stack above all canvas layers */
+        .lp-content {
+            position: relative;
+            z-index: 10;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 0;
+            animation: lp-enter 1.2s cubic-bezier(0.16, 1, 0.3, 1) both;
+        }
+
+        @keyframes lp-enter {
+            from { opacity: 0; transform: translateY(30px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+
+        /* Top badge */
+        .lp-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            background: rgba(56, 189, 248, 0.08);
+            border: 1px solid rgba(56, 189, 248, 0.25);
+            border-radius: 30px;
+            padding: 5px 16px;
+            font-size: 0.7rem;
+            letter-spacing: 3px;
+            text-transform: uppercase;
+            color: #7dd3fc;
+            margin-bottom: 22px;
+        }
+        .lp-badge-dot {
+            width: 6px; height: 6px;
+            border-radius: 50%;
+            background: #38bdf8;
+            box-shadow: 0 0 8px #38bdf8;
+            animation: pulse-dot 1.8s ease-in-out infinite;
+        }
+        @keyframes pulse-dot {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50%       { opacity: 0.4; transform: scale(0.6); }
+        }
+
+        .lp-logo {
+            font-family: 'Rajdhani', sans-serif;
+            font-size: clamp(2.8rem, 6vw, 5.5rem);
+            color: #e2e8f0;
+            margin-bottom: 4px;
+            font-weight: 700;
+            line-height: 1;
+            letter-spacing: -1px;
+        }
+        .lp-logo span {
+            color: #38bdf8;
+            text-shadow: 0 0 30px rgba(56, 189, 248, 0.5), 0 0 60px rgba(56, 189, 248, 0.2);
+        }
+
+        .lp-subtitle {
+            font-family: 'Rajdhani', sans-serif;
+            font-size: clamp(0.75rem, 1.5vw, 1rem);
+            letter-spacing: 5px;
+            text-transform: uppercase;
+            color: #475569;
+            margin-bottom: 28px;
+        }
+
+        .lp-divider {
+            width: 60px; height: 1px;
+            background: linear-gradient(90deg, transparent, #38bdf8, transparent);
+            margin: 0 auto 28px;
+        }
+
+        .lp-desc {
+            max-width: 600px;
+            font-size: clamp(0.85rem, 1.5vw, 1rem);
+            color: #64748b;
+            line-height: 1.75;
+            margin-bottom: 40px;
+        }
+
+        /* Stats row */
+        .lp-stats {
+            display: flex;
+            gap: 40px;
+            margin-bottom: 44px;
+        }
+        .lp-stat {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+        }
+        .lp-stat-value {
+            font-family: 'Rajdhani', sans-serif;
+            font-size: 1.8rem;
+            font-weight: 700;
+            color: #38bdf8;
+            line-height: 1;
+        }
+        .lp-stat-label {
+            font-size: 0.65rem;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            color: #475569;
+        }
+        .lp-stat-sep {
+            width: 1px;
+            background: rgba(255,255,255,0.08);
+            align-self: stretch;
+        }
+
+        .lp-btn {
+            position: relative;
+            padding: 16px 52px;
+            font-size: 0.85rem;
+            font-family: 'Rajdhani', sans-serif;
+            font-weight: 700;
+            background: transparent;
+            color: #38bdf8;
+            border: 1px solid rgba(56, 189, 248, 0.5);
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.35s ease;
+            text-transform: uppercase;
+            letter-spacing: 4px;
+            overflow: hidden;
+        }
+        .lp-btn::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(135deg, rgba(56,189,248,0.12), transparent);
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+        .lp-btn::after {
+            content: '';
+            position: absolute;
+            bottom: 0; left: 0; right: 0;
+            height: 2px;
+            background: linear-gradient(90deg, transparent, #38bdf8, transparent);
+            transform: scaleX(0);
+            transition: transform 0.4s ease;
+        }
+        .lp-btn:hover { 
+            border-color: #38bdf8;
+            color: #fff;
+            box-shadow: 0 0 30px rgba(56, 189, 248, 0.25), inset 0 0 30px rgba(56, 189, 248, 0.05);
+        }
+        .lp-btn:hover::before { opacity: 1; }
+        .lp-btn:hover::after { transform: scaleX(1); }
+
+        /* Corner accents on landing */
+        .lp-corner {
+            position: absolute;
+            width: 40px; height: 40px;
+            z-index: 10;
+            pointer-events: none;
+        }
+        .lp-corner.tl { top: 24px; left: 24px; border-top: 1px solid rgba(56,189,248,0.4); border-left: 1px solid rgba(56,189,248,0.4); }
+        .lp-corner.tr { top: 24px; right: 24px; border-top: 1px solid rgba(56,189,248,0.4); border-right: 1px solid rgba(56,189,248,0.4); }
+        .lp-corner.bl { bottom: 24px; left: 24px; border-bottom: 1px solid rgba(56,189,248,0.4); border-left: 1px solid rgba(56,189,248,0.4); }
+        .lp-corner.br { bottom: 24px; right: 24px; border-bottom: 1px solid rgba(56,189,248,0.4); border-right: 1px solid rgba(56,189,248,0.4); }
+
+        .lp-lang { position: absolute; top: 30px; right: 40px; z-index: 20; }
+
+        /* Telemetry ticker at the very bottom of landing */
+        .lp-ticker {
+            position: absolute;
+            bottom: 0; left: 0; right: 0;
+            z-index: 10;
+            border-top: 1px solid rgba(255,255,255,0.05);
+            background: rgba(2,6,23,0.6);
+            backdrop-filter: blur(8px);
+            display: flex;
+            align-items: center;
+            padding: 8px 24px;
+            gap: 24px;
+            overflow: hidden;
+        }
+        .lp-ticker-label {
+            font-family: 'Rajdhani', sans-serif;
+            font-size: 0.7rem;
+            letter-spacing: 3px;
+            text-transform: uppercase;
+            color: #38bdf8;
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+        .lp-ticker-track { flex: 1; overflow: hidden; position: relative; }
+        .lp-ticker-inner {
+            display: flex;
+            gap: 48px;
+            white-space: nowrap;
+            animation: ticker-scroll 30s linear infinite;
+            font-family: 'Rajdhani', sans-serif;
+            font-size: 0.72rem;
+            letter-spacing: 1px;
+            color: #475569;
+        }
+        @keyframes ticker-scroll {
+            from { transform: translateX(0); }
+            to   { transform: translateX(-50%); }
+        }
+        .lp-ticker-item { display: inline-flex; align-items: center; gap: 8px; }
+        .lp-ticker-item span { color: #7dd3fc; }
+
+        /* ─── DASHBOARD (unchanged styles) ─── */
+        #app-container { display: none; padding: 20px; max-width: 1800px; margin: 0 auto; }
+        .app-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 15px; margin-bottom: 20px; }
+        .app-header h1 { font-family: 'Rajdhani', sans-serif; font-size: 1.8rem; margin: 0; color: #e2e8f0; }
+        .app-header span { color: #38bdf8; }
+        .lang-toggle { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.2); color: #cbd5e1; padding: 6px 15px; border-radius: 6px; cursor: pointer; font-family: 'Montserrat', sans-serif; font-size: 0.85rem; transition: 0.2s;}
+        .lang-toggle:hover { background: rgba(255,255,255,0.1); color: #fff; }
+
+        .top-row { display: flex; gap: 20px; height: 65vh; min-height: 550px; margin-bottom: 20px; }
+        .sidebar { width: 340px; background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(56, 189, 248, 0.2); border-radius: 12px; display: flex; flex-direction: column; padding: 15px; }
+        .tabs { display: flex; gap: 5px; margin-bottom: 15px; }
+        .tab-btn { flex: 1; background: rgba(255,255,255,0.03); border: 1px solid transparent; color: #94a3b8; padding: 8px 0; font-family: 'Rajdhani', sans-serif; font-size: 0.95rem; font-weight: 600; cursor: pointer; border-radius: 6px; transition: 0.2s;}
+        .tab-btn.active { background: rgba(56, 189, 248, 0.1); color: #38bdf8; border-color: rgba(56, 189, 248, 0.3); }
+        .sat-grid { display: grid; grid-template-columns: repeat(8, 1fr); gap: 4px; margin-bottom: 15px; }
+        .sat-btn { background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; color: #cbd5e1; font-size: 0.75rem; padding: 6px 0; cursor: pointer; text-align: center; }
+        .sat-btn.active.G { background: #0ea5e9; color: #fff; border-color: #38bdf8; }
+        .sat-btn.active.R { background: #ef4444; color: #fff; border-color: #f87171; }
+        .sat-btn.active.E { background: #eab308; color: #fff; border-color: #facc15; }
+        .main-btn { width: 100%; background: #38bdf8; border: none; color: #0f172a; padding: 12px; border-radius: 8px; cursor: pointer; font-family: 'Rajdhani', sans-serif; font-weight: 700; font-size: 1.1rem; margin-bottom: 15px; transition: 0.2s;}
+        .main-btn:hover { background: #7dd3fc; }
+        .sat-list { flex: 1; overflow-y: auto; padding-right: 5px; }
+        .sat-card { background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.05); padding: 12px; margin-bottom: 10px; border-radius: 8px; }
+        .sat-card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 8px;}
+        .sat-title { font-family: 'Rajdhani', sans-serif; font-size: 1.2rem; font-weight: 700; }
+        .sat-card.G .sat-title { color: #facc15; } .sat-card.R .sat-title { color: #ef4444; } .sat-card.E .sat-title { color: #38bdf8; }
+        .card-actions { display: flex; gap: 5px; }
+        .action-icon-btn { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: #e2e8f0; padding: 4px 8px; border-radius: 4px; font-size: 0.75rem; cursor: pointer; transition: 0.2s;}
+        .action-icon-btn:hover { background: rgba(255,255,255,0.15); }
+        .btn-analysis { background: rgba(245, 158, 11, 0.1); color: #fcd34d; border-color: rgba(245, 158, 11, 0.3);}
+        .btn-analysis:hover { background: rgba(245, 158, 11, 0.3); }
+        .data-list { font-size: 0.8rem; color: #94a3b8; line-height: 1.5; }
+        .data-list b { color: #f8fafc; font-weight: 500; font-family: 'Rajdhani', sans-serif; font-size: 0.9rem;}
+        .map-wrapper { flex: 1; border-radius: 12px; overflow: hidden; border: 1px solid rgba(56, 189, 248, 0.2); position: relative; }
+        #cesiumContainer { width: 100%; height: 100%; }
+        .cesium-viewer-bottom { display: block !important; }
+        .cesium-timeline-main { background: #0f172a !important; border-top: 1px solid rgba(56,189,248,0.3) !important; }
+        .cesium-timeline-bar { background: rgba(56,189,248,0.15) !important; }
+        .cesium-timeline-needle { background: #38bdf8 !important; }
+        .cesium-animation-theme .cesiumButton { background: rgba(56,189,248,0.12) !important; border-color: rgba(56,189,248,0.3) !important; }
+        .cesium-animation-container { filter: hue-rotate(190deg) brightness(0.85) !important; }
+        .reset-cam-btn { position: absolute; bottom: 15px; right: 15px; z-index: 10; background: rgba(15, 23, 42, 0.8); border: 1px solid rgba(56, 189, 248, 0.4); color: #38bdf8; padding: 8px 15px; border-radius: 6px; font-family: 'Rajdhani', sans-serif; font-weight: 600; cursor: pointer;}
+        .reset-cam-btn:hover { background: #38bdf8; color: #0f172a; }
+        .bottom-row { display: flex; gap: 20px; height: 42vh; min-height: 400px; }
+        .panel-title { font-family: 'Rajdhani', sans-serif; font-size: 1.2rem; color: #e2e8f0; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 10px; margin-top: 0; margin-bottom: 10px; }
+        .analysis-section { flex: 2; background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; padding: 15px; display: flex; flex-direction: column; position: relative;}
+        .charts-container { display: flex; gap: 15px; flex: 1; overflow: hidden; }
+        .chart-box { flex: 1; position: relative; background: rgba(0,0,0,0.2); border-radius: 8px; padding: 10px;}
+        .skyplot-section { flex: 1; min-width: 340px; background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; padding: 15px; display: flex; flex-direction: column; overflow: hidden; }
+        .skyplot-canvas-wrapper { flex: 1; position: relative; width: 100%; overflow: hidden; }
+        .skyplot-canvas-wrapper canvas { display: block; position: absolute; top: 0; left: 0; }
+        .loading-overlay { position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(15, 23, 42, 0.8); display: flex; justify-content: center; align-items: center; color: #38bdf8; font-family: 'Rajdhani', sans-serif; font-size: 1.2rem; font-weight: bold; border-radius: 8px; z-index: 5; display: none;}
+        .mode-toggle-btn { background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.15); color: #64748b; padding: 5px 16px; border-radius: 5px; font-family: 'Rajdhani', sans-serif; font-weight: 600; font-size: 0.9rem; cursor: pointer; letter-spacing: 1px; transition: 0.2s; }
+        .mode-toggle-btn:hover { background: rgba(255,255,255,0.1); color: #e2e8f0; }
+        .mode-toggle-btn.active-mode { background: rgba(56,189,248,0.15); border-color: rgba(56,189,248,0.5); color: #38bdf8; }
+    </style>
+</head>
+<body>
+
+    <!-- ═══════════════════════════ LANDING PAGE ═══════════════════════════ -->
+    <div id="landing-page">
+
+        <!-- Background layers (rendered bottom→top by z-index) -->
+        <canvas id="starfield-canvas"></canvas>
+        <canvas id="globe-canvas"></canvas>
+        <div class="lp-vignette"></div>
+        <div class="lp-scanlines"></div>
+
+        <!-- Corner accents -->
+        <div class="lp-corner tl"></div>
+        <div class="lp-corner tr"></div>
+        <div class="lp-corner bl"></div>
+        <div class="lp-corner br"></div>
+
+        <!-- Language toggle -->
+        <div class="lp-lang">
+            <button class="lang-toggle" onclick="toggleLanguage()">EN / TR</button>
+        </div>
+
+        <!-- Main content -->
+        <div class="lp-content">
+            <div class="lp-badge">
+                <div class="lp-badge-dot"></div>
+                <span id="lp-badge-text">LIVE TELEMETRY ACTIVE</span>
+            </div>
+
+            <div class="lp-logo">GNSS <span>Center</span></div>
+            <div class="lp-subtitle">Orbital Analysis Platform</div>
+            <div class="lp-divider"></div>
+
+            <div class="lp-desc" id="lp-desc-text">
+                Advanced satellite ground track visualization, topocentric skyplot tracking, and real-time RTN orbit error analysis using Broadcast vs. SP3 ephemeris data.
+            </div>
+
+            <div class="lp-stats">
+                <div class="lp-stat">
+                    <div class="lp-stat-value">92</div>
+                    <div class="lp-stat-label">Satellites</div>
+                </div>
+                <div class="lp-stat-sep"></div>
+                <div class="lp-stat">
+                    <div class="lp-stat-value">3</div>
+                    <div class="lp-stat-label">Constellations</div>
+                </div>
+                <div class="lp-stat-sep"></div>
+                <div class="lp-stat">
+                    <div class="lp-stat-value">RTN</div>
+                    <div class="lp-stat-label">Error Model</div>
+                </div>
+            </div>
+
+            <button class="lp-btn" id="lp-launch-btn" onclick="launchSystem()">Initialize System</button>
+        </div>
+
+        <!-- Bottom telemetry ticker -->
+        <div class="lp-ticker">
+            <div class="lp-ticker-label">TELEMETRY</div>
+            <div class="lp-ticker-track">
+                <div class="lp-ticker-inner" id="lp-ticker-inner">
+                    <!-- items duplicated for seamless loop -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══════════════════════════ APP ═══════════════════════════ -->
+    <div id="app-container">
+        <div class="app-header">
+            <h1 id="ui-main-title">GNSS <span>Orbital Analysis Center</span></h1>
+            <button class="lang-toggle" onclick="toggleLanguage()">Language: EN / TR</button>
+        </div>
+        <div class="top-row">
+            <div class="sidebar">
+                <div class="tabs">
+                    <button class="tab-btn active" onclick="switchTab('G')" id="tab-G">GPS</button>
+                    <button class="tab-btn" onclick="switchTab('R')" id="tab-R">GLONASS</button>
+                    <button class="tab-btn" onclick="switchTab('E')" id="tab-E">GALILEO</button>
+                </div>
+                <div class="sat-grid" id="sat-grid"></div>
+                <button onclick="loadSatellites()" class="main-btn" id="ui-load-btn">LOAD CONSTELLATION</button>
+                <div class="sat-list" id="info">
+                    <div style="text-align: center; color: #64748b; margin-top: 20px; font-style: italic;" id="ui-waiting">Select satellites to begin tracking.</div>
+                </div>
+            </div>
+            <div class="map-wrapper">
+                <div id="cesiumContainer"></div>
+                <button class="reset-cam-btn" id="ui-reset-btn" onclick="resetCamera()">Reset View</button>
+            </div>
+        </div>
+        <div class="bottom-row" id="analysis-anchor">
+            <div class="analysis-section">
+                <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:10px; margin-bottom:15px;">
+                    <h3 class="panel-title" id="ui-ap-title" style="border:none; padding:0; margin:0;">
+                        Orbit Error Analysis <span id="ap-sat-id" style="color:#38bdf8;">| Standby</span>
+                    </h3>
+                    <div style="display:flex; gap:6px;">
+                        <button id="mode-rtn-btn" class="mode-toggle-btn active-mode" onclick="switchAnalysisMode('rtn')">RTN</button>
+                        <button id="mode-kep-btn" class="mode-toggle-btn" onclick="switchAnalysisMode('kepler')">Δ Kepler</button>
+                    </div>
+                </div>
+                <div class="loading-overlay" id="loading-analysis">Processing Data...</div>
+                <!-- RTN Grafikleri -->
+                <div class="charts-container" id="rtn-charts">
+                    <div class="chart-box"><canvas id="chartX"></canvas></div>
+                    <div class="chart-box"><canvas id="chartY"></canvas></div>
+                    <div class="chart-box"><canvas id="chartZ"></canvas></div>
+                </div>
+                <!-- Kepler Hata Grafikleri -->
+                <div class="charts-container" id="kepler-charts" style="display:none;">
+                    <div class="chart-box"><canvas id="chartDeltaA"></canvas></div>
+                    <div class="chart-box"><canvas id="chartDeltaE"></canvas></div>
+                    <div class="chart-box"><canvas id="chartDeltaI"></canvas></div>
+                </div>
+                <!-- Kepler İstatistik Tablosu -->
+                <div id="kepler-stats-table" style="display:none; margin-top:10px; font-family:'Rajdhani',sans-serif; font-size:0.82rem; color:#94a3b8;"></div>
+            </div>
+            <div class="skyplot-section">
+                <h3 class="panel-title" id="ui-sp-title">Topocentric Skyplot Visibility</h3>
+                <div class="skyplot-canvas-wrapper">
+                    <canvas id="skyplotChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    /* ═══════════════════════════════════════════════════════════
+       STARFIELD CANVAS (pure 2-D, fast)
+    ═══════════════════════════════════════════════════════════ */
+    (function initStarfield() {
+        const canvas = document.getElementById('starfield-canvas');
+        const ctx = canvas.getContext('2d');
+        let W, H, stars = [];
+
+        function resize() {
+            W = canvas.width  = window.innerWidth;
+            H = canvas.height = window.innerHeight;
+        }
+
+        function buildStars(n = 280) {
+            stars = [];
+            for (let i = 0; i < n; i++) {
+                stars.push({
+                    x: Math.random() * W,
+                    y: Math.random() * H,
+                    r: Math.random() * 1.2 + 0.2,
+                    alpha: Math.random() * 0.6 + 0.15,
+                    speed: Math.random() * 0.003 + 0.001,
+                    phase: Math.random() * Math.PI * 2
+                });
+            }
+        }
+
+        let t = 0;
+        function draw() {
+            ctx.clearRect(0, 0, W, H);
+            t += 0.012;
+            stars.forEach(s => {
+                const a = s.alpha * (0.6 + 0.4 * Math.sin(t * s.speed * 120 + s.phase));
+                ctx.beginPath();
+                ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(200,225,255,${a})`;
+                ctx.fill();
+            });
+            requestAnimationFrame(draw);
+        }
+
+        resize();
+        buildStars();
+        draw();
+        window.addEventListener('resize', () => { resize(); buildStars(); });
+    })();
+
+
+    /* ═══════════════════════════════════════════════════════════
+       THREE.JS GLOBE
+    ═══════════════════════════════════════════════════════════ */
+    (function initGlobe() {
+        const canvas = document.getElementById('globe-canvas');
+        const renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true });
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        renderer.setClearColor(0x000000, 0);
+
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 1000);
+        camera.position.z = 2.8;
+
+        function resize() {
+            const W = window.innerWidth;
+            const H = window.innerHeight;
+            renderer.setSize(W, H);
+            camera.aspect = W / H;
+            camera.updateProjectionMatrix();
+        }
+        resize();
+        window.addEventListener('resize', resize);
+
+        // ── EARTH SPHERE ──
+        const RADIUS = 1;
+        const geo = new THREE.SphereGeometry(RADIUS, 64, 64);
+
+        // Procedural texture: dark ocean + bright landmass approximation
+        // We use a canvas texture so no external image is needed
+        const texCanvas = document.createElement('canvas');
+        texCanvas.width = 1024; texCanvas.height = 512;
+        const tctx = texCanvas.getContext('2d');
+
+        // Base ocean
+        const oceanGrad = tctx.createLinearGradient(0, 0, 0, 512);
+        oceanGrad.addColorStop(0,   '#040e20');
+        oceanGrad.addColorStop(0.5, '#061525');
+        oceanGrad.addColorStop(1,   '#020b14');
+        tctx.fillStyle = oceanGrad;
+        tctx.fillRect(0, 0, 1024, 512);
+
+        // Approximate land patches (very rough, not accurate)
+        tctx.fillStyle = '#0d2a3a';
+        const landPatches = [
+            // N America
+            [140, 80, 160, 120],
+            // S America
+            [180, 220, 80, 130],
+            // Europe
+            [430, 80, 60, 70],
+            // Africa
+            [440, 160, 90, 150],
+            // Asia
+            [490, 70, 280, 130],
+            // Australia
+            [660, 270, 100, 80],
+            // Greenland
+            [200, 40, 60, 50],
+        ];
+        landPatches.forEach(([x, y, w, h]) => {
+            tctx.beginPath();
+            tctx.ellipse(x, y, w/2, h/2, 0, 0, Math.PI * 2);
+            tctx.fill();
+        });
+
+        // City glow dots
+        tctx.fillStyle = 'rgba(56,189,248,0.6)';
+        const cities = [
+            [200,110],[210,118],[420,90],[460,95],[470,100],[500,80],
+            [530,95],[540,100],[600,90],[660,85],[700,95],[180,230],
+            [195,240],[465,175],[455,180],[670,275],[680,280],[450,165],
+        ];
+        cities.forEach(([x, y]) => {
+            tctx.beginPath();
+            tctx.arc(x, y, 2.5, 0, Math.PI * 2);
+            tctx.fill();
+        });
+
+        const texture = new THREE.CanvasTexture(texCanvas);
+
+        const mat = new THREE.MeshPhongMaterial({
+            map: texture,
+            specular: new THREE.Color(0x112233),
+            shininess: 15,
+            transparent: false,
+        });
+        const earth = new THREE.Mesh(geo, mat);
+        scene.add(earth);
+
+        // ── WIREFRAME GRID OVERLAY ──
+        const gridGeo = new THREE.SphereGeometry(RADIUS + 0.003, 36, 18);
+        const gridMat = new THREE.MeshBasicMaterial({
+            color: 0x38bdf8,
+            wireframe: true,
+            transparent: true,
+            opacity: 0.04,
+        });
+        const grid = new THREE.Mesh(gridGeo, gridMat);
+        scene.add(grid);
+
+        // ── ATMOSPHERE GLOW ──
+        // Inner glow (a slightly bigger sphere with additive blending)
+        const atmGeo = new THREE.SphereGeometry(RADIUS + 0.045, 64, 64);
+        const atmMat = new THREE.MeshPhongMaterial({
+            color: 0x1a6fa8,
+            emissive: 0x0a3d68,
+            transparent: true,
+            opacity: 0.18,
+            side: THREE.FrontSide,
+            depthWrite: false,
+        });
+        const atmosphere = new THREE.Mesh(atmGeo, atmMat);
+        scene.add(atmosphere);
+
+        // Outer halo ring (additive)
+        const haloGeo = new THREE.SphereGeometry(RADIUS + 0.12, 64, 64);
+        const haloMat = new THREE.MeshBasicMaterial({
+            color: 0x38bdf8,
+            transparent: true,
+            opacity: 0.04,
+            side: THREE.BackSide,
+            depthWrite: false,
+        });
+        scene.add(new THREE.Mesh(haloGeo, haloMat));
+
+        // ── ORBIT RINGS ──
+        function makeOrbit(radiusOrbit, tiltX, tiltZ, color, opacity) {
+            const pts = [];
+            for (let i = 0; i <= 128; i++) {
+                const a = (i / 128) * Math.PI * 2;
+                pts.push(new THREE.Vector3(Math.cos(a) * radiusOrbit, 0, Math.sin(a) * radiusOrbit));
+            }
+            const orbitGeo = new THREE.BufferGeometry().setFromPoints(pts);
+            const orbitMat = new THREE.LineBasicMaterial({ color, transparent: true, opacity });
+            const orbit = new THREE.Line(orbitGeo, orbitMat);
+            orbit.rotation.x = tiltX;
+            orbit.rotation.z = tiltZ;
+            return orbit;
+        }
+
+        const orbits = [
+            makeOrbit(1.45, 0.95, 0.1,  0x38bdf8, 0.25),
+            makeOrbit(1.50, 0.50, 0.8,  0xfacc15, 0.18),
+            makeOrbit(1.42, 1.20, 0.3,  0xef4444, 0.18),
+            makeOrbit(1.55, 0.30, 1.1,  0x38bdf8, 0.12),
+        ];
+        orbits.forEach(o => scene.add(o));
+
+        // ── SATELLITE DOTS ON ORBITS ──
+        const satDots = orbits.map((orbit, idx) => {
+            const r = [1.45, 1.50, 1.42, 1.55][idx];
+            const dotGeo = new THREE.SphereGeometry(0.018, 8, 8);
+            const dotMat = new THREE.MeshBasicMaterial({ color: [0x38bdf8, 0xfacc15, 0xef4444, 0x38bdf8][idx] });
+            const dot = new THREE.Mesh(dotGeo, dotMat);
+            // Attach to orbit group
+            const group = new THREE.Group();
+            group.rotation.x = orbit.rotation.x;
+            group.rotation.z = orbit.rotation.z;
+            dot.position.set(r, 0, 0);
+            group.add(dot);
+            scene.add(group);
+            return { group, dot, r, speed: [0.003, 0.002, 0.0035, 0.0025][idx], angle: idx * 1.5 };
+        });
+
+        // ── LIGHTS ──
+        const ambientLight = new THREE.AmbientLight(0x334466, 0.6);
+        scene.add(ambientLight);
+
+        const sunLight = new THREE.DirectionalLight(0xffffff, 1.2);
+        sunLight.position.set(5, 3, 5);
+        scene.add(sunLight);
+
+        const rimLight = new THREE.DirectionalLight(0x1a6fa8, 0.4);
+        rimLight.position.set(-4, -1, -3);
+        scene.add(rimLight);
+
+        // ── ANIMATION ──
+        let mouseX = 0, mouseY = 0;
+        window.addEventListener('mousemove', e => {
+            mouseX = (e.clientX / window.innerWidth  - 0.5) * 0.4;
+            mouseY = (e.clientY / window.innerHeight - 0.5) * 0.2;
+        });
+
+        let tGlobe = 0;
+        function animate() {
+            requestAnimationFrame(animate);
+            tGlobe += 0.005;
+
+            // Slow self-rotation
+            earth.rotation.y += 0.0015;
+            grid.rotation.y  += 0.0015;
+            atmosphere.rotation.y += 0.0015;
+
+            // Subtle camera drift following mouse
+            camera.position.x += (mouseX * 0.3 - camera.position.x) * 0.03;
+            camera.position.y += (-mouseY * 0.3 - camera.position.y) * 0.03;
+            camera.lookAt(scene.position);
+
+            // Animate satellite dots
+            satDots.forEach(s => {
+                s.angle += s.speed;
+                s.dot.position.set(Math.cos(s.angle) * s.r, 0, Math.sin(s.angle) * s.r);
+            });
+
+            renderer.render(scene, camera);
+        }
+        animate();
+    })();
+
+
+    /* ═══════════════════════════════════════════════════════════
+       TELEMETRY TICKER
+    ═══════════════════════════════════════════════════════════ */
+    (function buildTicker() {
+        const items = [
+            { label: 'G01', value: '20,200 km' }, { label: 'G15', value: '3.87 km/s' },
+            { label: 'R07', value: '19,100 km' }, { label: 'E22', value: '23,222 km' },
+            { label: 'G12', value: 'HEALTHY' },   { label: 'R03', value: 'ACTIVE' },
+            { label: 'E11', value: 'SIGNAL OK' },  { label: 'G29', value: '3.91 km/s' },
+            { label: 'RTN', value: 'RADIAL ±0.4m' }, { label: 'PDOP', value: '1.82' },
+            { label: 'UTC', value: new Date().toISOString().slice(11,19) + 'Z' },
+            { label: 'G01', value: '20,200 km' }, { label: 'G15', value: '3.87 km/s' },
+            { label: 'R07', value: '19,100 km' }, { label: 'E22', value: '23,222 km' },
+            { label: 'G12', value: 'HEALTHY' },   { label: 'R03', value: 'ACTIVE' },
+            { label: 'E11', value: 'SIGNAL OK' },  { label: 'G29', value: '3.91 km/s' },
+            { label: 'RTN', value: 'RADIAL ±0.4m' }, { label: 'PDOP', value: '1.82' },
+            { label: 'UTC', value: new Date().toISOString().slice(11,19) + 'Z' },
+        ];
+        const inner = document.getElementById('lp-ticker-inner');
+        inner.innerHTML = items.map(it =>
+            `<div class="lp-ticker-item">${it.label} <span>${it.value}</span></div>`
+        ).join('');
+    })();
+
+
+    /* ═══════════════════════════════════════════════════════════
+       APP LOGIC (unchanged from original)
+    ═══════════════════════════════════════════════════════════ */
+    const i18n = {
+        en: { 
+            lpDesc: "Advanced satellite ground track visualization, topocentric skyplot tracking, and real-time RTN orbit error analysis using Broadcast vs. SP3 ephemeris data.",
+            lpBtn: "Initialize System", mainTitle: "GNSS <span>Orbital Analysis Center</span>",
+            btnLoad: "LOAD CONSTELLATION", waiting: "Select satellites to begin tracking.",
+            focus: "Focus", btnAnlz: "Analyze", resetCam: "Reset View",
+            spTitle: "Topocentric Skyplot Visibility", apTitle: "Orbit Error Analysis (RTN System)",
+            lblA: "Semi-Major Axis (A):", lblE: "Eccentricity (e):", lblI: "Inclination (i0):", lblV: "Velocity:", lblAlt: "Altitude:",
+            cRadial: "Radial Error [Meters]", cAlong: "Along-track Error [Meters]", cCross: "Cross-track Error [Meters]",
+            standby: "| Standby", loading: "Processing Data...", errGps: "Only GPS broadcasts can be analyzed.",
+            lpBadge: "LIVE TELEMETRY ACTIVE"
+        },
+        tr: { 
+            lpDesc: "Broadcast ve SP3 verileri kullanarak gelişmiş uydu yer izi görselleştirmesi, toposentrik skyplot takibi ve gerçek zamanlı RTN yörünge hata analizi.",
+            lpBtn: "Sistemi Başlat", mainTitle: "GNSS <span>Yörünge Analiz Merkezi</span>",
+            btnLoad: "TAKIMYILDIZI YÜKLE", waiting: "Takip etmek için uyduları seçin.",
+            focus: "Odaklan", btnAnlz: "Analiz Et", resetCam: "Görünümü Sıfırla",
+            spTitle: "Toposentrik Skyplot Görünürlüğü", apTitle: "Yörünge Hata Analizi (RTN Sistemi)",
+            lblA: "Yarı Büyük Eksen (A):", lblE: "Dışmerkezlik (e):", lblI: "Yörünge Eğikliği (i0):", lblV: "Hız:", lblAlt: "Yükseklik:",
+            cRadial: "Radial (Radyal) Hata [Metre]", cAlong: "Along-track (Transvers) Hata [Metre]", cCross: "Cross-track (Normal) Hata [Metre]",
+            standby: "| Bekleniyor", loading: "Veriler İşleniyor...", errGps: "Sadece GPS verileri kıyaslanabilir.",
+            lpBadge: "CANLI TELEMETRİ AKTİF"
+        }
+    };
+
+    let currentLang = 'en'; 
+    let selectedSats = new Set(['G01', 'G02', 'G12']); 
+    let currentConstellation = 'G'; 
+    let satelliteEntities = {}; 
+    let latestSatData = []; 
+    let currentAnalysisData = null; 
+    let myChartA = null, myChartE = null, myChartI = null, skyplotChart = null;
+    let viewer = null;
+    const constConfig = { 'G': 32, 'R': 24, 'E': 36 };
+
+    function updateUI() {
+        const lang = i18n[currentLang];
+        document.getElementById('lp-desc-text').innerText = lang.lpDesc;
+        document.getElementById('lp-launch-btn').innerText = lang.lpBtn;
+        document.getElementById('ui-main-title').innerHTML = lang.mainTitle;
+        document.getElementById('ui-load-btn').innerText = lang.btnLoad;
+        document.getElementById('ui-sp-title').innerText = lang.spTitle;
+        document.getElementById('ui-reset-btn').innerText = lang.resetCam;
+        document.getElementById('loading-analysis').innerText = lang.loading;
+        if (document.getElementById('lp-badge-text')) document.getElementById('lp-badge-text').innerText = lang.lpBadge;
+        const waitingEl = document.getElementById('ui-waiting');
+        if (waitingEl) waitingEl.innerText = lang.waiting;
+        const apSatId = document.getElementById('ap-sat-id').innerText;
+        const titleSat = apSatId.includes("Standby") || apSatId.includes("Bekleniyor") ? lang.standby : `| ${apSatId.replace('| ', '')}`;
+        document.getElementById('ui-ap-title').innerHTML = `${lang.apTitle} <span id="ap-sat-id" style="color:#38bdf8;">${titleSat}</span>`;
+        document.querySelectorAll('.btn-analysis').forEach(b => b.innerText = lang.btnAnlz);
+        document.querySelectorAll('.btn-focus').forEach(b => b.innerText = lang.focus);
+        if (latestSatData.length > 0) loadSatellites(true); 
+        if (currentAnalysisData) renderCharts(currentAnalysisData); 
+    }
+
+    function toggleLanguage() { currentLang = currentLang === 'en' ? 'tr' : 'en'; updateUI(); }
+
+    function launchSystem() {
+        document.getElementById('landing-page').style.display = 'none';
+        document.getElementById('app-container').style.display = 'block';
+        if (!viewer) initCesium();
+        else setTimeout(() => { viewer.resize(); }, 100);
+        drawSkyplot();
+    }
+
+    function switchTab(const_id) {
+        currentConstellation = const_id;
+        document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+        document.getElementById(`tab-${const_id}`).classList.add('active');
+        buildGrid();
+    }
+
+    function buildGrid() {
+        const grid = document.getElementById('sat-grid');
+        grid.innerHTML = '';
+        for (let i = 1; i <= constConfig[currentConstellation]; i++) {
+            const satId = `${currentConstellation}${i.toString().padStart(2, '0')}`;
+            const btn = document.createElement('div');
+            btn.className = `sat-btn ${selectedSats.has(satId) ? 'active ' + currentConstellation : ''}`;
+            btn.innerText = satId;
+            btn.onclick = () => {
+                if (selectedSats.has(satId)) { selectedSats.delete(satId); btn.className = 'sat-btn'; } 
+                else { selectedSats.add(satId); btn.className = `sat-btn active ${currentConstellation}`; }
+            };
+            grid.appendChild(btn);
+        }
+    }
+
+    function initCesium() {
+        viewer = new Cesium.Viewer('cesiumContainer', {
+            baseLayerPicker: false, geocoder: false, animation: true, timeline: true,
+            infoBox: false, navigationHelpButton: false, sceneModePicker: true, 
+            imageryProvider: new Cesium.TileMapServiceImageryProvider({ url: Cesium.buildModuleUrl('Assets/Textures/NaturalEarthII') })
+        });
+        viewer.imageryLayers.addImageryProvider(new Cesium.UrlTemplateImageryProvider({ url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}' }));
+        viewer.scene.globe.enableLighting = false; 
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // UYDU İKONU — Canvas ile çizilen küçük uydu sembolü
+    // ──────────────────────────────────────────────────────────────────────────
+    function createSatelliteIcon(cssColor) {
+        const canvas = document.createElement('canvas');
+        canvas.width = 32; canvas.height = 32;
+        const ctx = canvas.getContext('2d');
+        ctx.clearRect(0, 0, 32, 32);
+
+        ctx.strokeStyle = cssColor; ctx.fillStyle = cssColor; ctx.lineWidth = 1.5;
+
+        // Uydu gövdesi
+        ctx.fillRect(11, 11, 10, 10);
+        // Sol güneş paneli
+        ctx.fillRect(1, 13, 9, 6);
+        // Sağ güneş paneli
+        ctx.fillRect(22, 13, 9, 6);
+        // Panel çerçeveleri (detay)
+        ctx.strokeRect(1, 13, 9, 6);
+        ctx.strokeRect(22, 13, 9, 6);
+        // Anten
+        ctx.beginPath(); ctx.moveTo(16, 11); ctx.lineTo(16, 5); ctx.stroke();
+        ctx.beginPath(); ctx.arc(16, 4, 2.5, 0, Math.PI*2);
+        ctx.fillStyle = cssColor; ctx.fill();
+
+        return canvas;
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // SAAT PANELİ — Cesium simülasyon saatini gösterir
+    // ──────────────────────────────────────────────────────────────────────────
+    function startClockDisplay() {
+        let clockPanel = document.getElementById('sim-clock-panel');
+        if (!clockPanel) {
+            clockPanel = document.createElement('div');
+            clockPanel.id = 'sim-clock-panel';
+            clockPanel.style.cssText = `
+                position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
+                z-index: 10; background: rgba(10,15,30,0.82); backdrop-filter: blur(8px);
+                border: 1px solid rgba(56,189,248,0.35); border-radius: 8px;
+                padding: 6px 18px; display: flex; align-items: center; gap: 12px;
+                font-family: 'Rajdhani', sans-serif; color: #e2e8f0; font-size: 0.88rem;
+                pointer-events: none;
+            `;
+            document.querySelector('.map-wrapper').appendChild(clockPanel);
+        }
+
+        function updatePanel() {
+            if (!viewer) return;
+            const jd  = viewer.clock.currentTime;
+            const iso = Cesium.JulianDate.toIso8601(jd, 0);    // UTC ISO string
+            const date = iso.slice(0,10);
+            const time = iso.slice(11,19);
+            const spd  = viewer.clock.multiplier;
+            clockPanel.innerHTML = `
+                <span style="color:#64748b;letter-spacing:2px;font-size:0.7rem;">SIM TIME</span>
+                <span style="color:#38bdf8;font-size:1.05rem;font-weight:700;">${date}</span>
+                <span style="color:#e2e8f0;font-size:1rem;">${time} UTC</span>
+                <span style="color:#64748b;font-size:0.75rem;">×${spd}</span>
+            `;
+            requestAnimationFrame(updatePanel);
+        }
+        updatePanel();
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // GPS KONSTELASYONUNUNtam yörünge elipsleri (Cesium'a çizilir)
+    // Kural: Her seçili uydu için SADECE o uyduya ait yörünge çizilir.
+    // Aynı orbital düzlemdeki iki uydu seçilirse yörünge TEK çizilir (duplicate yok).
+    // ──────────────────────────────────────────────────────────────────────────
+    let constellationOrbitEntities = [];
+
+    const PRN_TO_RAAN = {
+        G01:0,G03:0,G08:0,G14:0,
+        G09:60,G27:60,G10:60,G30:60,
+        G06:120,G19:120,G24:120,G11:120,
+        G02:180,G17:180,G28:180,G20:180,
+        G05:240,G18:240,G21:240,G15:240,
+        G29:300,G07:300,G26:300,G12:300
+    };
+
+    const ORBIT_COLORS_CSS = {
+        0:'#38bdf8', 60:'#ff6b6b', 120:'#90ee90',
+        180:'#ffd700', 240:'#ff69b4', 300:'#da70d6'
+    };
+
+    function eciKmToCartesian(x, y, z) {
+        return new Cesium.Cartesian3(x * 1000, y * 1000, z * 1000);
+    }
+
+    // Kepler → orbit noktaları (ECI → Cesium Cartesian)
+    function computeOrbitPoints(raan_deg, inc_deg = 55, a_km = 26560, e = 0.01, n = 360) {
+        const RAAN = raan_deg * Math.PI / 180;
+        const INC  = inc_deg  * Math.PI / 180;
+        const p    = a_km * (1 - e * e);
+        const pts  = [];
+        for (let k = 0; k <= n; k++) {
+            const v    = (k / n) * Math.PI * 2;
+            const r    = p / (1 + e * Math.cos(v));
+            const cosV = Math.cos(v), sinV = Math.sin(v);
+            const x = r * (Math.cos(RAAN)*cosV - Math.sin(RAAN)*sinV*Math.cos(INC));
+            const y = r * (Math.sin(RAAN)*cosV + Math.cos(RAAN)*sinV*Math.cos(INC));
+            const z = r * sinV * Math.sin(INC);
+            pts.push(eciKmToCartesian(x, y, z));
+        }
+        return pts;
+    }
+
+    function drawConstellationOrbits() {
+        constellationOrbitEntities.forEach(e => { if (viewer) viewer.entities.remove(e); });
+        constellationOrbitEntities = [];
+        if (!viewer) return;
+
+        const gpsSats = Array.from(selectedSats).filter(s => s.startsWith('G'));
+        if (gpsSats.length === 0) return;
+
+        const drawnRaans = new Set();
+        gpsSats.forEach(prn => {
+            const raan = PRN_TO_RAAN[prn];
+            if (raan === undefined || drawnRaans.has(raan)) return;
+            drawnRaans.add(raan);
+
+            const positions = computeOrbitPoints(raan);
+            const cssColor  = ORBIT_COLORS_CSS[raan] || '#38bdf8';
+            const cesColor  = Cesium.Color.fromCssColorString(cssColor).withAlpha(0.65);
+
+            const entity = viewer.entities.add({
+                name: `GPS Plane RAAN=${raan}°`,
+                polyline: {
+                    positions,
+                    width: 1.8,
+                    material: new Cesium.PolylineDashMaterialProperty({ color: cesColor, dashLength: 18 }),
+                    arcType: Cesium.ArcType.NONE
+                }
+            });
+            constellationOrbitEntities.push(entity);
+        });
+    }
+
+    function resetCamera() { if (viewer) viewer.camera.flyHome(1.5); }
+    function focusSatellite(satId) { if (satelliteEntities[satId] && satelliteEntities[satId].point) viewer.flyTo(satelliteEntities[satId].point, { duration: 1.5, offset: new Cesium.HeadingPitchRange(0, -Cesium.Math.PI_OVER_FOUR, 15000000) }); }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // PROFESYONEL SKYPLOT — Canvas 2D, HiDPI, ark izleri, elevasyon gradyanı
+    // Bilimsel doğruluk: N üstte, dıştan içe 0°(horizon)→90°(zenit)
+    // Maske çizgisi 10° (kırmızı kesikli) — standart GNSS pratiği
+    // ═══════════════════════════════════════════════════════════════════════
+    async function drawSkyplot() {
+        const canvas  = document.getElementById('skyplotChart');
+        const wrapper = canvas.parentElement;
+        const DPR     = window.devicePixelRatio || 1;
+        const W = wrapper.clientWidth  || 320;
+        const H = wrapper.clientHeight || 320;
+        canvas.width  = Math.round(W * DPR);
+        canvas.height = Math.round(H * DPR);
+        canvas.style.width  = W + 'px';
+        canvas.style.height = H + 'px';
+        const ctx = canvas.getContext('2d');
+        ctx.scale(DPR, DPR);
+
+        const LEGEND_H = 22;
+        const PAD      = 40;
+        const plotH    = H - LEGEND_H;
+        const cx = W / 2, cy = plotH / 2;
+        const maxR = Math.min(W / 2, plotH / 2) - PAD;
+
+        function toXY(az, el) {
+            const r = (1 - el / 90) * maxR;
+            return { x: cx + r * Math.sin(az * Math.PI/180), y: cy - r * Math.cos(az * Math.PI/180) };
+        }
+
+        // 1. Arka plan
+        ctx.clearRect(0, 0, W, H);
+        const bg = ctx.createRadialGradient(cx, cy, 0, cx, cy, maxR * 1.4);
+        bg.addColorStop(0, '#0d1b2e'); bg.addColorStop(0.6, '#0a1422'); bg.addColorStop(1, '#060d18');
+        ctx.fillStyle = bg; ctx.fillRect(0, 0, W, plotH);
+
+        // 2. Elevasyon bölge tonları
+        [[0,10,'rgba(239,68,68,0.08)'],[10,30,'rgba(251,146,60,0.04)']].forEach(([a,b,col])=>{
+            const r1=(1-a/90)*maxR, r2=(1-b/90)*maxR;
+            const g=ctx.createRadialGradient(cx,cy,r2,cx,cy,r1);
+            g.addColorStop(0,'transparent'); g.addColorStop(1,col);
+            ctx.beginPath(); ctx.arc(cx,cy,r1,0,Math.PI*2); ctx.arc(cx,cy,r2,0,Math.PI*2,true);
+            ctx.fillStyle=g; ctx.fill();
+        });
+
+        // 3. Halka ızgara
+        [0,10,30,60,90].forEach(el=>{
+            const r=(1-el/90)*maxR;
+            ctx.beginPath(); ctx.arc(cx,cy,r,0,Math.PI*2);
+            if(el===0){ctx.strokeStyle='rgba(56,189,248,0.4)';ctx.lineWidth=1.5;ctx.setLineDash([]);}
+            else if(el===10){ctx.strokeStyle='rgba(239,68,68,0.55)';ctx.lineWidth=1;ctx.setLineDash([4,4]);}
+            else{ctx.strokeStyle='rgba(255,255,255,0.09)';ctx.lineWidth=0.8;ctx.setLineDash([]);}
+            ctx.stroke(); ctx.setLineDash([]);
+        });
+
+        // 4. Azimut çizgileri
+        for(let az=0;az<360;az+=30){
+            const i=toXY(az,90),o=toXY(az,0);
+            ctx.beginPath();ctx.moveTo(i.x,i.y);ctx.lineTo(o.x,o.y);
+            ctx.strokeStyle='rgba(255,255,255,0.055)';ctx.lineWidth=0.8;ctx.stroke();
+        }
+
+        // 5. Elevasyon etiketleri
+        [[10,'rgba(239,68,68,0.65)','bold 8.5px Montserrat'],
+         [30,'rgba(255,255,255,0.28)','8.5px Montserrat'],
+         [60,'rgba(255,255,255,0.28)','8.5px Montserrat']].forEach(([el,col,font])=>{
+            const p=toXY(2,el);
+            ctx.fillStyle=col; ctx.font=font; ctx.textAlign='left'; ctx.textBaseline='middle';
+            ctx.fillText(el+'°',p.x+3,p.y);
+        });
+
+        // 6. Yön etiketleri
+        [{az:0,l:'N',bold:true,col:'#ef4444'},{az:45,l:'NE',bold:false,col:'rgba(255,255,255,0.28)'},
+         {az:90,l:'E',bold:true,col:'rgba(226,232,240,0.9)'},{az:135,l:'SE',bold:false,col:'rgba(255,255,255,0.28)'},
+         {az:180,l:'S',bold:true,col:'rgba(226,232,240,0.9)'},{az:225,l:'SW',bold:false,col:'rgba(255,255,255,0.28)'},
+         {az:270,l:'W',bold:true,col:'rgba(226,232,240,0.9)'},{az:315,l:'NW',bold:false,col:'rgba(255,255,255,0.28)'}
+        ].forEach(d=>{
+            const p=toXY(d.az,-7);
+            ctx.fillStyle=d.col; ctx.font=d.bold?'bold 11px Montserrat':'8.5px Montserrat';
+            ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(d.l,p.x,p.y);
+        });
+
+        // 7. Veri/API kontrolü
+        const satQuery=Array.from(selectedSats).join(',');
+        const stationCode=document.getElementById('skyplot-station-select')?.value||'ANKR';
+        if(!satQuery||!latestSatData||latestSatData.length===0){
+            ctx.fillStyle='rgba(100,116,139,0.6)';ctx.font='11px Montserrat';
+            ctx.textAlign='center';ctx.textBaseline='middle';
+            ctx.fillText('Uydu yükle → Skyplot çizilir',cx,cy); return;
+        }
+
+        let skyData;
+        try{
+            const r=await fetch(`http://localhost:8000/api/skyplot?sats=${satQuery}&station=${stationCode}`);
+            skyData=await r.json();
+            if(skyData.status!=='success') throw new Error();
+        }catch(e){
+            ctx.fillStyle='rgba(239,68,68,0.75)';ctx.font='11px Montserrat';
+            ctx.textAlign='center';ctx.textBaseline='middle';
+            ctx.fillText('API bağlantısı kurulamadı',cx,cy); return;
+        }
+
+        const sta=skyData.station;
+        const infoEl=document.getElementById('skyplot-station-info');
+        if(infoEl) infoEl.textContent=`${sta.lat.toFixed(3)}°N  ${sta.lon.toFixed(3)}°E  h=${sta.h.toFixed(0)} m`;
+
+        function satColor(id){
+            if(id.startsWith('G')) return '#facc15';
+            if(id.startsWith('R')) return '#ef4444';
+            if(id.startsWith('E')) return '#38bdf8';
+            return '#a78bfa';
+        }
+
+        // 8. Uydu arklarını çiz
+        let visibleCount=0, maxElGlobal=0;
+        skyData.arcs.forEach(sat=>{
+            const color=satColor(sat.id);
+            visibleCount++;
+            sat.segments.forEach((seg,si)=>{
+                if(!seg.length) return;
+                seg.forEach(pt=>{ if(pt.el>maxElGlobal) maxElGlobal=pt.el; });
+                if(seg.length===1){
+                    const p=toXY(seg[0].az,seg[0].el);
+                    ctx.beginPath();ctx.arc(p.x,p.y,3,0,Math.PI*2);ctx.fillStyle=color;ctx.fill(); return;
+                }
+                // Elevasyon bazlı gradyan çizgi
+                for(let k=0;k<seg.length-1;k++){
+                    const p1=toXY(seg[k].az,seg[k].el), p2=toXY(seg[k+1].az,seg[k+1].el);
+                    const elN=seg[k].el/90;
+                    ctx.shadowColor=seg[k].el>50?color:'transparent';
+                    ctx.shadowBlur=seg[k].el>50?5:0;
+                    ctx.beginPath(); ctx.moveTo(p1.x,p1.y); ctx.lineTo(p2.x,p2.y);
+                    ctx.strokeStyle=color; ctx.globalAlpha=0.3+elN*0.7;
+                    ctx.lineWidth=1.0+elN*2.0; ctx.stroke();
+                }
+                ctx.globalAlpha=1; ctx.shadowBlur=0;
+
+                // Giriş noktası + saat
+                const pIn=toXY(seg[0].az,seg[0].el);
+                ctx.beginPath();ctx.arc(pIn.x,pIn.y,3.5,0,Math.PI*2);
+                ctx.fillStyle=color;ctx.strokeStyle='rgba(255,255,255,0.5)';ctx.lineWidth=0.8;ctx.fill();ctx.stroke();
+                if(seg[0].t){
+                    ctx.fillStyle='rgba(255,255,255,0.4)';ctx.font='7.5px Montserrat';
+                    ctx.textAlign='center';ctx.textBaseline='bottom';
+                    ctx.fillText(seg[0].t+'z',pIn.x,pIn.y-5);
+                }
+
+                // Çıkış noktası + PRN + çıkış saati
+                if(si===sat.segments.length-1){
+                    const pOut=toXY(seg[seg.length-1].az,seg[seg.length-1].el);
+                    ctx.shadowColor=color; ctx.shadowBlur=6;
+                    ctx.beginPath();ctx.arc(pOut.x,pOut.y,5,0,Math.PI*2);
+                    ctx.fillStyle=color;ctx.strokeStyle='#fff';ctx.lineWidth=1.2;ctx.fill();ctx.stroke();
+                    ctx.shadowBlur=0;
+                    const side=pOut.x>cx?'left':'right', offX=pOut.x>cx?9:-9;
+                    ctx.fillStyle=color;ctx.font='bold 9px Rajdhani';
+                    ctx.textAlign=side;ctx.textBaseline='middle';
+                    ctx.fillText(sat.id,pOut.x+offX,pOut.y);
+                    if(seg[seg.length-1].t){
+                        ctx.fillStyle='rgba(255,255,255,0.3)';ctx.font='7.5px Montserrat';
+                        ctx.textBaseline='top';ctx.fillText(seg[seg.length-1].t+'z',pOut.x+offX,pOut.y+5);
+                    }
+                }
+            });
+        });
+
+        // 9. Merkez (istasyon)
+        ctx.shadowColor='#38bdf8'; ctx.shadowBlur=10;
+        ctx.beginPath();ctx.arc(cx,cy,4.5,0,Math.PI*2);
+        ctx.fillStyle='#38bdf8';ctx.strokeStyle='#fff';ctx.lineWidth=1.5;ctx.fill();ctx.stroke();
+        ctx.shadowBlur=0;
+        ctx.fillStyle='rgba(56,189,248,0.7)';ctx.font='bold 9px Rajdhani';
+        ctx.textAlign='center';ctx.textBaseline='top';ctx.fillText(sta.name,cx,cy+8);
+
+        // 10. Alt legend
+        ctx.fillStyle='rgba(6,13,24,0.88)';ctx.fillRect(0,plotH,W,LEGEND_H);
+        ctx.strokeStyle='rgba(56,189,248,0.15)';ctx.lineWidth=0.5;
+        ctx.beginPath();ctx.moveTo(0,plotH);ctx.lineTo(W,plotH);ctx.stroke();
+        ctx.fillStyle='rgba(148,163,184,0.75)';ctx.font='8.5px Montserrat';
+        ctx.textAlign='left';ctx.textBaseline='middle';
+        ctx.fillText(`${visibleCount} uydu görünür  |  max el: ${maxElGlobal.toFixed(1)}°  |  maske: 10° (kırmızı)`,9,plotH+LEGEND_H/2);
+        const legendItems=[{l:'GPS',c:'#facc15'},{l:'GLO',c:'#ef4444'},{l:'GAL',c:'#38bdf8'}];
+        let lx=W-9;
+        legendItems.reverse().forEach(item=>{
+            ctx.fillStyle=item.c;ctx.font='bold 9px Rajdhani';ctx.textAlign='right';ctx.textBaseline='middle';
+            ctx.fillText(item.l,lx,plotH+LEGEND_H/2); lx-=ctx.measureText(item.l).width+12;
+            ctx.beginPath();ctx.arc(lx,plotH+LEGEND_H/2,3,0,Math.PI*2);ctx.fillStyle=item.c;ctx.fill(); lx-=13;
+        });
+    }
+
+    let currentAnalysisMode = 'rtn'; // 'rtn' veya 'kepler'
+    let myChartDeltaA = null, myChartDeltaE = null, myChartDeltaI = null;
+    let lastAnalyzedSat = null;
+
+    function switchAnalysisMode(mode) {
+        currentAnalysisMode = mode;
+        document.getElementById('mode-rtn-btn').classList.toggle('active-mode', mode === 'rtn');
+        document.getElementById('mode-kep-btn').classList.toggle('active-mode', mode === 'kepler');
+        document.getElementById('rtn-charts').style.display    = mode === 'rtn'    ? 'flex' : 'none';
+        document.getElementById('kepler-charts').style.display = mode === 'kepler' ? 'flex' : 'none';
+        document.getElementById('kepler-stats-table').style.display = mode === 'kepler' ? 'block' : 'none';
+        // Eğer uydu zaten analiz edilmişse, diğer mod verilerini otomatik yükle
+        if (lastAnalyzedSat) openAnalysis(lastAnalyzedSat);
+    }
+
+    async function openAnalysis(satId) {
+        const lang = i18n[currentLang];
+        if (!satId.startsWith('G')) { alert(lang.errGps); return; }
+        lastAnalyzedSat = satId;
+        document.getElementById('ap-sat-id').innerText = `| ${satId}`;
+        document.getElementById('loading-analysis').style.display = 'flex';
+        document.getElementById('analysis-anchor').scrollIntoView({ behavior: 'smooth' });
+
+        try {
+            if (currentAnalysisMode === 'rtn') {
+                const response = await fetch(`http://localhost:8000/api/analysis?sat=${satId}`);
+                const data = await response.json();
+                if (data.status === 'error') { alert(data.message); document.getElementById('loading-analysis').style.display = 'none'; return; }
+                document.getElementById('loading-analysis').style.display = 'none';
+                currentAnalysisData = data.analysis;
+                renderCharts(currentAnalysisData);
+            } else {
+                const response = await fetch(`http://localhost:8000/api/kepler_errors?sat=${satId}`);
+                const data = await response.json();
+                if (data.status === 'error') { alert(data.message); document.getElementById('loading-analysis').style.display = 'none'; return; }
+                document.getElementById('loading-analysis').style.display = 'none';
+                renderKeplerCharts(data.kepler_errors, data.stats);
+            }
+        } catch (error) {
+            alert("API Error: " + error.message);
+            document.getElementById('loading-analysis').style.display = 'none';
+        }
+    }
+
+    function renderCharts(analysisData) {
+        const lang = i18n[currentLang];
+        if (myChartA) myChartA.destroy(); if (myChartE) myChartE.destroy(); if (myChartI) myChartI.destroy();
+        const labels = analysisData.times; 
+        Chart.defaults.color = '#64748b'; Chart.defaults.font.family = 'Rajdhani';
+        const commonOptions = { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { grid: { color: 'rgba(255,255,255,0.05)' } }, x: { grid: { display: false } } } };
+        myChartA = new Chart(document.getElementById('chartX'), { type: 'line', data: { labels, datasets: [{ label: 'Radial', data: analysisData.radial, borderColor: '#38bdf8', backgroundColor: 'rgba(56, 189, 248, 0.1)', fill: true, borderWidth: 2, tension: 0.3, pointRadius: 0 }] }, options: { ...commonOptions, plugins: { title: { display: true, text: lang.cRadial, color: '#e2e8f0', font: { family: 'Montserrat', size: 12 } } } } });
+        myChartE = new Chart(document.getElementById('chartY'), { type: 'line', data: { labels, datasets: [{ label: 'Along-track', data: analysisData.along, borderColor: '#facc15', backgroundColor: 'rgba(250, 204, 21, 0.1)', fill: true, borderWidth: 2, tension: 0.3, pointRadius: 0 }] }, options: { ...commonOptions, plugins: { title: { display: true, text: lang.cAlong, color: '#e2e8f0', font: { family: 'Montserrat', size: 12 } } } } });
+        myChartI = new Chart(document.getElementById('chartZ'), { type: 'line', data: { labels, datasets: [{ label: 'Cross-track', data: analysisData.cross, borderColor: '#ef4444', backgroundColor: 'rgba(239, 68, 68, 0.1)', fill: true, borderWidth: 2, tension: 0.3, pointRadius: 0 }] }, options: { ...commonOptions, plugins: { title: { display: true, text: lang.cCross, color: '#e2e8f0', font: { family: 'Montserrat', size: 12 } } } } });
+    }
+
+    function renderKeplerCharts(keplerErrors, stats) {
+        if (myChartDeltaA) myChartDeltaA.destroy();
+        if (myChartDeltaE) myChartDeltaE.destroy();
+        if (myChartDeltaI) myChartDeltaI.destroy();
+
+        const labels = keplerErrors.times;
+        Chart.defaults.color = '#64748b';
+        Chart.defaults.font.family = 'Rajdhani';
+        const commonOpts = (titleText, color) => ({
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false },
+                title: { display: true, text: titleText, color: '#e2e8f0', font: { family: 'Montserrat', size: 12 } }
+            },
+            scales: {
+                y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#64748b' } },
+                x: { grid: { display: false }, ticks: { color: '#64748b', maxTicksLimit: 12 } }
+            }
+        });
+
+        const makeDataset = (data, color) => ({
+            data,
+            borderColor: color,
+            backgroundColor: color.replace(')', ', 0.08)').replace('rgb', 'rgba'),
+            fill: true, borderWidth: 2, tension: 0.35, pointRadius: 0
+        });
+
+        myChartDeltaA = new Chart(document.getElementById('chartDeltaA'), {
+            type: 'line',
+            data: { labels, datasets: [makeDataset(keplerErrors.delta_A, '#38bdf8')] },
+            options: commonOpts('ΔA — Semi-Major Axis Error [m]  (SP3 − Broadcast)', '#38bdf8')
+        });
+        myChartDeltaE = new Chart(document.getElementById('chartDeltaE'), {
+            type: 'line',
+            data: { labels, datasets: [makeDataset(keplerErrors.delta_E, '#a78bfa')] },
+            options: commonOpts('Δe — Eccentricity Error  (SP3 − Broadcast)', '#a78bfa')
+        });
+        myChartDeltaI = new Chart(document.getElementById('chartDeltaI'), {
+            type: 'line',
+            data: { labels, datasets: [makeDataset(keplerErrors.delta_I, '#fb923c')] },
+            options: commonOpts('Δi — Inclination Error [°]  (SP3 − Broadcast)', '#fb923c')
+        });
+
+        // İstatistik tablosu
+        const s = stats || {};
+        const fmt = (v) => v !== undefined ? v.toFixed(4) : '—';
+        const fmtE = (v) => v !== undefined ? v.toExponential(3) : '—';
+        document.getElementById('kepler-stats-table').innerHTML = `
+            <table style="width:100%; border-collapse:collapse; font-size:0.8rem;">
+                <thead>
+                    <tr style="color:#475569; text-transform:uppercase; letter-spacing:1px; font-size:0.7rem;">
+                        <th style="text-align:left; padding:6px 10px; border-bottom:1px solid rgba(255,255,255,0.06);">Parameter</th>
+                        <th style="padding:6px 10px; border-bottom:1px solid rgba(255,255,255,0.06);">Mean</th>
+                        <th style="padding:6px 10px; border-bottom:1px solid rgba(255,255,255,0.06);">Std Dev</th>
+                        <th style="padding:6px 10px; border-bottom:1px solid rgba(255,255,255,0.06);">Min</th>
+                        <th style="padding:6px 10px; border-bottom:1px solid rgba(255,255,255,0.06);">Max</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr style="color:#e2e8f0;">
+                        <td style="padding:6px 10px; color:#38bdf8; font-weight:600;">ΔA [m]</td>
+                        <td style="text-align:center; padding:6px 10px;">${s.delta_A ? fmt(s.delta_A.mean) : '—'}</td>
+                        <td style="text-align:center; padding:6px 10px;">${s.delta_A ? fmt(s.delta_A.std) : '—'}</td>
+                        <td style="text-align:center; padding:6px 10px;">${s.delta_A ? fmt(s.delta_A.min) : '—'}</td>
+                        <td style="text-align:center; padding:6px 10px;">${s.delta_A ? fmt(s.delta_A.max) : '—'}</td>
+                    </tr>
+                    <tr style="color:#e2e8f0;">
+                        <td style="padding:6px 10px; color:#a78bfa; font-weight:600;">Δe</td>
+                        <td style="text-align:center; padding:6px 10px;">${s.delta_E ? fmtE(s.delta_E.mean) : '—'}</td>
+                        <td style="text-align:center; padding:6px 10px;">${s.delta_E ? fmtE(s.delta_E.std) : '—'}</td>
+                        <td style="text-align:center; padding:6px 10px;">${s.delta_E ? fmtE(s.delta_E.min) : '—'}</td>
+                        <td style="text-align:center; padding:6px 10px;">${s.delta_E ? fmtE(s.delta_E.max) : '—'}</td>
+                    </tr>
+                    <tr style="color:#e2e8f0;">
+                        <td style="padding:6px 10px; color:#fb923c; font-weight:600;">Δi [°]</td>
+                        <td style="text-align:center; padding:6px 10px;">${s.delta_I ? fmt(s.delta_I.mean) : '—'}</td>
+                        <td style="text-align:center; padding:6px 10px;">${s.delta_I ? fmt(s.delta_I.std) : '—'}</td>
+                        <td style="text-align:center; padding:6px 10px;">${s.delta_I ? fmt(s.delta_I.min) : '—'}</td>
+                        <td style="text-align:center; padding:6px 10px;">${s.delta_I ? fmt(s.delta_I.max) : '—'}</td>
+                    </tr>
+                </tbody>
+            </table>`;
+    }
+
+    async function loadSatellites(skipFetch = false) {
+        const infoDiv = document.getElementById('info');
+        const lang = i18n[currentLang];
+        if (selectedSats.size === 0) return;
+        if (!skipFetch) {
+            infoDiv.innerHTML = `<div style="text-align:center; color:#38bdf8; margin-top:20px; font-family:'Rajdhani';">${lang.loading}</div>`;
+            if (viewer) viewer.entities.removeAll(); 
+            satelliteEntities = {}; 
+            const satQuery = Array.from(selectedSats).join(',');
+            try {
+                const response = await fetch(`http://localhost:8000/api/satellites?sats=${satQuery}`);
+                const result = await response.json();
+                latestSatData = result.data; 
+                drawSkyplot();
+            } catch (error) { 
+                infoDiv.innerHTML = `<div style="color:#ef4444; text-align:center;">API Error</div>`; return; 
+            }
+        }
+        infoDiv.innerHTML = ""; 
+        latestSatData.forEach(sat => {
+            const prefix = sat.id.charAt(0);
+            let trackColor = Cesium.Color.DEEPSKYBLUE; 
+            if (prefix === 'R') trackColor = Cesium.Color.RED; 
+            if (prefix === 'E') trackColor = Cesium.Color.GOLD; 
+            if (!skipFetch && viewer) {
+                // ── Ground track (statik yol izi) ──
+                const positions = sat.track.map(p => Cesium.Cartesian3.fromDegrees(p.lon, p.lat, p.alt));
+                const trackEntity = viewer.entities.add({
+                    polyline: { positions, width: 1.5,
+                        material: new Cesium.PolylineDashMaterialProperty({ color: trackColor.withAlpha(0.35), dashLength: 15.0 })
+                    }
+                });
+
+                // ── ANİMASYONLU UYDU — SampledPositionProperty ile zaman bazlı hareket ──
+                const posProperty = new Cesium.SampledPositionProperty();
+                sat.track.forEach(pt => {
+                    const jd  = Cesium.JulianDate.fromIso8601(pt.time);
+                    const pos = Cesium.Cartesian3.fromDegrees(pt.lon, pt.lat, pt.alt);
+                    posProperty.addSample(jd, pos);
+                });
+                posProperty.setInterpolationOptions({
+                    interpolationDegree: 5,
+                    interpolationAlgorithm: Cesium.LagrangePolynomialApproximation
+                });
+
+                // ── Uydu simgesi için renk CSS string'i ──
+                const colorCss = prefix === 'R' ? '#ef4444' : prefix === 'E' ? '#facc15' : '#38bdf8';
+                const iconCanvas = createSatelliteIcon(colorCss);
+
+                const pointEntity = viewer.entities.add({
+                    position: posProperty,
+
+                    // Uydu ikonlu billboard
+                    billboard: {
+                        image: iconCanvas,
+                        width: 26, height: 26,
+                        verticalOrigin: Cesium.VerticalOrigin.CENTER,
+                        scaleByDistance: new Cesium.NearFarScalar(1e6, 1.3, 1.5e8, 0.5)
+                    },
+
+                    // Uydu etiketi
+                    label: {
+                        text: sat.id,
+                        font: 'bold 11pt Rajdhani, sans-serif',
+                        style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+                        fillColor: Cesium.Color.WHITE,
+                        outlineColor: Cesium.Color.BLACK,
+                        outlineWidth: 2,
+                        verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
+                        pixelOffset: new Cesium.Cartesian2(0, -18),
+                        scaleByDistance: new Cesium.NearFarScalar(1e6, 1.0, 1.5e8, 0.4)
+                    },
+
+                    // Hareketli iz (2 saatlik trailing trail)
+                    path: {
+                        resolution: 60,
+                        leadTime: 0,
+                        trailTime: 7200,
+                        material: new Cesium.PolylineDashMaterialProperty({
+                            color: trackColor.withAlpha(0.7), dashLength: 20
+                        }),
+                        width: 1.5
+                    }
+                });
+
+                satelliteEntities[sat.id] = { track: trackEntity, point: pointEntity };
+            }
+            const k = sat.kepler; const r = sat.instant_data; const c = sat.track[0];
+            if (r && c) {
+                const a_val = k && k['A (Yarı Büyük Eksen) [m]'] ? ((k['A (Yarı Büyük Eksen) [m]']/1000).toFixed(2)) : '—';
+                const e_val = k && k['e (Dışmerkezlik)'] ? k['e (Dışmerkezlik)'].toFixed(5) : '—';
+                const i_val = k && k['i0 (Yörünge Eğikliği)'] ? k['i0 (Yörünge Eğikliği)'].toFixed(4) + ' rad' : '—';
+                let analysisBtnHTML = '';
+                if (prefix === 'G') analysisBtnHTML = `<button class="action-icon-btn btn-analysis" onclick="openAnalysis('${sat.id}')">${lang.btnAnlz}</button>`;
+                infoDiv.innerHTML += `
+                    <div class="sat-card ${prefix}">
+                        <div class="sat-card-header">
+                            <div class="sat-title">${sat.id}</div>
+                            <div class="card-actions">
+                                <button class="action-icon-btn btn-focus" onclick="focusSatellite('${sat.id}')">${lang.focus}</button>
+                                ${analysisBtnHTML}
+                            </div>
+                        </div>
+                        <div class="data-list">
+                            ${lang.lblA} <b>${a_val} km</b><br>
+                            ${lang.lblE} <b>${e_val}</b><br>
+                            ${lang.lblI} <b>${i_val}</b><br>
+                            ${lang.lblV} <b>${r.velocity_kms.toFixed(2)} km/s</b><br>
+                            ${lang.lblAlt} <b>${(c.alt/1000).toFixed(0)} km</b>
+                        </div>
+                    </div>
+                `;
+            }
+        });
+        if (!skipFetch && viewer) {
+            viewer.zoomTo(viewer.entities);
+
+            // ── Cesium saatini SP3 veri aralığına ayarla ──
+            if (latestSatData.length > 0 && latestSatData[0].track.length > 1) {
+                const track = latestSatData[0].track;
+                const tStart = Cesium.JulianDate.fromIso8601(track[0].time);
+                const tStop  = Cesium.JulianDate.fromIso8601(track[track.length - 1].time);
+                viewer.clock.startTime     = tStart.clone();
+                viewer.clock.stopTime      = tStop.clone();
+                viewer.clock.currentTime   = tStart.clone();
+                viewer.clock.clockRange    = Cesium.ClockRange.LOOP_STOP;
+                viewer.clock.multiplier    = 120;   // 1 saniye gerçek zaman = 2 dakika simülasyon
+                viewer.clockViewModel.shouldAnimate = true;
+                if (viewer.timeline) viewer.timeline.zoomTo(tStart, tStop);
+            }
+
+            // Saat panelini başlat (ilk yüklemede)
+            if (!document.getElementById('sim-clock-panel')) startClockDisplay();
+        }
+
+        // GPS seçiliyse o uyduların yörünge elipslerini çiz
+        if (currentConstellation === 'G') drawConstellationOrbits();
+    }
+
+    buildGrid();
+    updateUI();
+    </script>
+</body>
+</html>

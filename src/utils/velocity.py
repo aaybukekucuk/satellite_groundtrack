@@ -3,13 +3,17 @@ velocity.py
 ===========
 SP3 konum serisinden sayısal türev ile hız vektörü hesabı.
 
-ÖNEMLİ BİRİM NOTU:
-  read_sp3.py koordinatları METRE cinsinden döndürür (km değil).
-  Bu nedenle:  dx [m] / dt [s] = vx [m/s]  — herhangi bir çarpan gerekmez.
+KRİTİK BİRİM NOTU:
+  read_sp3.py koordinatları KİLOMETRE [km] cinsinden döndürür.
+  api.py'de pozisyon için coords[i]['x'] * 1000 yapılıyor (km→m).
+  Hız için de aynı dönüşüm şart:
+      dx [km] / dt [s] = vx [km/s]  →  × 1000  →  vx [m/s]
 
-  Eski kodda * 1000 vardı (km varsayımıyla), bu velocity'yi 1000x şişiriyordu.
-  Arayüzde "3217.90 km/s" olarak görünen değer aslında gerçek hızın
-  1000 katıydı. Doğru değer ≈ 3.9 km/s'dir.
+  Önceki kodda "SP3 zaten metre" yorumu YANLIŞ'tı.
+  Bu hata hız vektörünü 1000x küçültüyordu.
+  RTN dönüşümünde Q × Q̇ cross product'ı bozuluyordu,
+  E3 (normal) yanlış hesaplanıyor, tüm RTN çerçevesi çöküyordu.
+  Sonuç: Radyal grafik ~-26.5 milyar metre gösteriyordu (GPS orbit yarıçapı).
 """
 
 import math
@@ -22,7 +26,7 @@ def calculate_orbital_velocity(x, y, z, a_meters):
     Dönüş   : skaler hız [km/s]
     """
     MU = 3.986004418e14
-    r  = math.sqrt(x**2 + y**2 + z**2)
+    r = math.sqrt(x**2 + y**2 + z**2)
     if a_meters <= 0 or r <= 0:
         return 0.0
     return math.sqrt(MU * (2.0 / r - 1.0 / a_meters)) / 1000.0
@@ -32,11 +36,12 @@ def calculate_sp3_velocity_from_positions(coords):
     """
     SP3 konum serisinden Merkezi Fark yöntemiyle hız vektörü.
 
-    Giriş  : coords[i] = {'x': m, 'y': m, 'z': m, 'time': datetime}
-    Çıkış  : [{'time', 'vx', 'vy', 'vz'}]  →  m/s
+    Giriş  : coords[i] = {'x': km, 'y': km, 'z': km, 'time': datetime}
+                          ^^^ SP3 KİLOMETRE cinsinden döndürür
+    Çıkış  : [{'time', 'vx', 'vy', 'vz'}]  ---  m/s
 
     DÜZELTİLEN HATA:
-      SP3 zaten metre cinsinden → dx/dt = m/s (×1000 YAPILMAZ)
+      dx [km] / dt [s] = km/s  --x1000-->  m/s
     """
     velocities = []
     n = len(coords)
@@ -55,7 +60,7 @@ def calculate_sp3_velocity_from_positions(coords):
             dy = coords[i]['y'] - coords[i-1]['y']
             dz = coords[i]['z'] - coords[i-1]['z']
         else:
-            # Merkezi Fark — O(h²) hassasiyet
+            # Merkezi Fark --- O(h2) hassasiyet
             dt = (coords[i+1]['time'] - coords[i-1]['time']).total_seconds()
             dx = coords[i+1]['x'] - coords[i-1]['x']
             dy = coords[i+1]['y'] - coords[i-1]['y']
@@ -66,12 +71,12 @@ def calculate_sp3_velocity_from_positions(coords):
                                 'vx': 0.0, 'vy': 0.0, 'vz': 0.0})
             continue
 
-        # SP3 metredeyse: m/s (×1000 YOK)
+        # SP3 km cinsinden: dx/dt = km/s --> x1000 --> m/s
         velocities.append({
             'time': coords[i]['time'],
-            'vx': dx / dt,   # m/s
-            'vy': dy / dt,   # m/s
-            'vz': dz / dt    # m/s
+            'vx': dx / dt * 1000.0,
+            'vy': dy / dt * 1000.0,
+            'vz': dz / dt * 1000.0
         })
 
     return velocities
